@@ -1,6 +1,6 @@
-const BUILD_VERSION = '2026-06-08 00:40:00 / movement-model-v4';
+const BUILD_VERSION = '2026-06-08 01:15:00 / source-inspired-movement-v5';
 
-const STORAGE_KEY = 'horse_race_simulator_private_v4_movement';
+const STORAGE_KEY = 'horse_race_simulator_private_v5_source_inspired';
 const STYLES = ['逃げ', '先行', '差し', '追込', '自在'];
 const FRAME_COLORS = [
   ['#ffffff', '#111111'], ['#111111', '#ffffff'], ['#f5f5f5', '#111111'], ['#111111', '#ffffff'],
@@ -267,16 +267,17 @@ async function startRace({ replay = false } = {}) {
 
   const seed = replay && state.replaySeed ? state.replaySeed : Date.now() + randomInt(1, 999999);
   state.replaySeed = seed;
-  const raceData = simulateRace(seededRandom(seed));
+  const raceData = simulateRace(seededRandom(seed), { recordFrames: true });
+  const frames = raceData.frames && raceData.frames.length ? raceData.frames : [];
   const finishLog = [];
   const finishedIds = new Set();
   const loggedPhases = new Set();
 
   addLog(`<strong>ゲートイン完了。</strong>${escapeHtml(state.settings.raceName)}、${state.horses.length}頭が態勢完了。`);
-  await wait(420);
+  await wait(520);
   if (!state.stopRequested) addLog(`<strong>スタート。</strong>ゲートが開き、一斉に飛び出しました。`);
 
-  const duration = 9800;
+  const replayDuration = getReplayDurationMs(Number(state.settings.distance));
   const startedAt = performance.now();
 
   await new Promise(resolve => {
@@ -287,16 +288,22 @@ async function startRace({ replay = false } = {}) {
       }
 
       const elapsed = now - startedAt;
-      const t = clamp(elapsed / duration, 0, 1);
-      const phase = getRacePhase(t);
-      updateTrackPhase(phase);
+      const t = clamp(elapsed / replayDuration, 0, 1);
+      const frame = sampleRaceFrame(frames, t);
+      updateTrackPhase(frame.phase);
 
-      const rawPositions = raceData.progress.map((item) => ({
-        item,
-        ...item.positionAt(t)
-      }));
+      const rawPositions = frame.horses.map((visual) => ({
+        item: { horse: getHorseByNumber(visual.number) },
+        x: visual.x,
+        y: visual.y,
+        rawProgress: visual.rawProgress,
+        lane: visual.lane,
+        speed: visual.speed,
+        staminaNow: visual.staminaNow
+      })).filter(p => p.item.horse);
+
       const visualPositions = resolveVisualPositions(rawPositions);
-      const leader = [...visualPositions].sort((a, b) => a.y - b.y)[0];
+      const leader = [...visualPositions].sort((a, b) => b.rawProgress - a.rawProgress)[0];
 
       visualPositions.forEach((pos) => {
         const marker = document.getElementById(`horse-${pos.item.horse.number}`);
@@ -309,20 +316,18 @@ async function startRace({ replay = false } = {}) {
       });
 
       raceData.results.forEach((result) => {
-        const progressItem = raceData.progress.find(p => p.horse.number === result.number);
-        if (!progressItem) return;
-        const p = progressItem.rawProgressAt(t);
-        if (p < 1 || finishedIds.has(result.number)) return;
+        if (finishedIds.has(result.number)) return;
+        if (frame.raceSeconds < result.raceSeconds) return;
         finishedIds.add(result.number);
         finishLog.push(result);
         renderFinishBoard(finishLog);
         addLog(`${finishLog.length}着 <strong>${result.number}番 ${escapeHtml(result.name)}</strong> がゴール線を通過。`);
       });
 
-      for (const p of [0.12, 0.33, 0.56, 0.73, 0.88]) {
+      for (const p of [0.10, 0.30, 0.52, 0.68, 0.84]) {
         if (t >= p && !loggedPhases.has(p)) {
           loggedPhases.add(p);
-          logLeaderFromPositions(visualPositions, phase.label);
+          logLeaderFromPositions(visualPositions, frame.phase.label);
         }
       }
 
@@ -359,65 +364,351 @@ const TRACK_MODEL = {
   finishY: 7.8,
   overrunY: -11,
   collisionX: 3.0,
-  collisionY: 4.7
+  collisionY: 4.7,
+  dt: 0.12,
+  frameIntervalSteps: 3,
+  laneChangePerSec: 1.05,
+  blockGapMeters: 14.0,
+  sideGapLane: 0.78
 };
 
-function simulateRace(rnd) {
-  const distance = Number(state.settings.distance);
-  const total = Math.max(1, state.horses.length || 18);
+function simulateRace(rnd, options = {}) {
+  const recordFrames = Boolean(options.recordFrames);
+  const distance = Number(state.settings.distance) || 2400;
   const baseTime = getBaseFinishTime(distance);
+  const total = Math.max(1, state.horses.length || 18);
+  const simHorses = state.horses.map((horse, index) => createSimHorse(horse, index, total, distance, baseTime, rnd));
+  const frames = [];
+  const finished = [];
 
-  const progress = state.horses.map((horse, index) => {
-    const score = calcScore(horse, rnd);
-    const formNoise = (rnd() - .5) * 2.8;
-    const finishTime = Math.max(
-      baseTime - 7.5,
-      baseTime - (score - 70) * .145 + formNoise
-    );
-    const gateLane = gateToLane(index + 1, total);
-    const lanePlan = makeLanePlan(horse, gateLane, rnd);
-    const lateKick = getLateKick(horse.style, rnd);
-    const earlyKick = getEarlyKick(horse.style, rnd);
+  let raceSeconds = 0;
+  let step = 0;
+  const maxRaceSeconds = baseTime * 1.32 + 10;
 
-    const rawProgressAt = (t) => {
-      const raceClock = t * (baseTime + 5.8);
-      let raw = raceClock / finishTime;
-      raw += earlyKick * smoothstep(0.02, 0.23, t) * (1 - smoothstep(0.28, 0.48, t));
-      raw += lateKick * smoothstep(0.66, 0.96, t);
-      raw += Math.sin((t * 8.2 + horse.number * .37 + lanePlan.phase) * Math.PI) * .0045;
-      return raw;
-    };
+  if (recordFrames) frames.push(recordRaceFrame(simHorses, raceSeconds, distance));
 
-    const positionAt = (t) => {
-      const raw = rawProgressAt(t);
-      const onCourse = clamp(raw, 0, 1);
-      const displayProgress = Math.pow(onCourse, 0.82);
-      const overrun = Math.max(0, raw - 1);
-      const y = lerp(TRACK_MODEL.startY, TRACK_MODEL.finishY, displayProgress)
-        + (overrun > 0 ? -overrun * 42 : 0);
-      const lane = laneAt(t, lanePlan);
-      const x = laneToPercent(lane);
-      return {
-        x: clamp(x, TRACK_MODEL.railLeft + 1.7, TRACK_MODEL.railRight - 1.7),
-        y: clamp(y, TRACK_MODEL.overrunY, TRACK_MODEL.startY),
-        rawProgress: raw,
-        lane
-      };
-    };
+  while (finished.length < simHorses.length && raceSeconds < maxRaceSeconds) {
+    const dt = TRACK_MODEL.dt;
+    raceSeconds += dt;
+    step += 1;
 
-    return { horse, score, finishTime, rawProgressAt, positionAt };
+    const activeRanked = [...simHorses].sort((a, b) => b.progress - a.progress);
+    const rankByNumber = new Map(activeRanked.map((horse, index) => [horse.number, index + 1]));
+
+    for (const horse of simHorses) {
+      if (horse.finished) continue;
+      updateLaneIntent(horse, simHorses, rankByNumber.get(horse.number) || total, distance, dt);
+    }
+
+    for (const horse of simHorses) {
+      const before = horse.progress;
+      if (horse.finished) {
+        horse.progress += Math.max(0, horse.speed) * dt * 0.28;
+        continue;
+      }
+
+      const targetSpeed = calculateTargetSpeed(horse, simHorses, rankByNumber.get(horse.number) || total, distance, baseTime, raceSeconds);
+      const accel = horse.speed <= targetSpeed ? 0.16 : 0.10;
+      horse.speed += (targetSpeed - horse.speed) * accel;
+      horse.speed = Math.max(0, horse.speed);
+
+      const effort = Math.max(0, horse.speed / Math.max(1, horse.baseSpeed) - 0.82);
+      const goingDrain = state.settings.going === '不良' ? 1.34 : state.settings.going === '重' ? 1.20 : state.settings.going === '稍重' ? 1.08 : 1.0;
+      const outerDrain = isCornerProgress(horse.progress / distance) ? (horse.lane - 1) * 0.0025 : 0;
+      horse.staminaNow = Math.max(0, horse.staminaNow - dt * goingDrain * (0.115 + effort * 0.34 + horse.blockPressure * 0.05 + outerDrain));
+
+      horse.progress += horse.speed * dt;
+      if (horse.progress >= distance) {
+        const gained = Math.max(0.001, horse.progress - before);
+        const over = horse.progress - distance;
+        const hitRatio = clamp(1 - over / gained, 0, 1);
+        horse.finished = true;
+        horse.finishRaceSec = raceSeconds - dt + dt * hitRatio;
+        finished.push(horse);
+      }
+    }
+
+    if (recordFrames && (step % TRACK_MODEL.frameIntervalSteps === 0 || finished.length === simHorses.length)) {
+      frames.push(recordRaceFrame(simHorses, raceSeconds, distance));
+    }
+  }
+
+  const unfinished = simHorses.filter(h => !h.finished).sort((a, b) => b.progress - a.progress);
+  unfinished.forEach((horse, index) => {
+    horse.finished = true;
+    horse.finishRaceSec = maxRaceSeconds + index * 0.15;
+    finished.push(horse);
   });
 
-  const results = [...progress]
-    .sort((a, b) => a.finishTime - b.finishTime)
-    .map(item => ({
-      number: item.horse.number,
-      name: item.horse.name,
-      score: item.score,
-      time: item.finishTime
+  const results = [...simHorses]
+    .sort((a, b) => a.finishRaceSec - b.finishRaceSec)
+    .map((simHorse, index) => ({
+      number: simHorse.number,
+      name: simHorse.name,
+      score: simHorse.score,
+      time: simHorse.finishRaceSec,
+      raceSeconds: simHorse.finishRaceSec,
+      margin: index === 0 ? 0 : simHorse.finishRaceSec - Math.min(...simHorses.map(h => h.finishRaceSec))
     }));
 
-  return { progress, results };
+  if (recordFrames && frames.length) {
+    const last = frames[frames.length - 1];
+    if (last.horses.some(h => h.rawProgress < 1.025)) {
+      frames.push(recordRaceFrame(simHorses, raceSeconds + 0.8, distance));
+    }
+  }
+
+  return { progress: [], frames, results };
+}
+
+function createSimHorse(horse, index, total, distance, baseTime, rnd) {
+  const score = calcScore(horse, rnd);
+  const speedBase = distance / baseTime;
+  const abilitySpeed = 0.94 + (score - 68) / 265;
+  const gateLane = gateToLane(index + 1, total);
+  const styleStart = {
+    '逃げ': 1.08,
+    '先行': 1.03,
+    '差し': 0.96,
+    '追込': 0.91,
+    '自在': 1.00
+  }[horse.style] ?? 1.0;
+
+  return {
+    ...horse,
+    number: horse.number,
+    name: horse.name,
+    score,
+    gateLane,
+    lane: gateLane,
+    laneIntent: gateLane,
+    pathBias: (rnd() - 0.5) * 1.2,
+    phaseSeed: rnd() * Math.PI * 2,
+    aggression: 0.65 + rnd() * 0.55,
+    reaction: 0.92 + rnd() * 0.16,
+    baseSpeed: speedBase * abilitySpeed * styleStart,
+    speed: speedBase * 0.42 * styleStart,
+    progress: 0,
+    staminaNow: Math.max(36, Number(horse.stamina) || 70),
+    blockPressure: 0,
+    finished: false,
+    finishRaceSec: Infinity
+  };
+}
+
+function updateLaneIntent(horse, allHorses, rank, distance, dt) {
+  const p = clamp(horse.progress / distance, 0, 1.12);
+  const preferred = calcPreferredLane(horse, rank, allHorses.length, p);
+  const traffic = findTrafficPressure(horse, allHorses);
+  horse.blockPressure = traffic.pressure;
+
+  let targetLane = preferred;
+  if (traffic.pressure > 0.10) {
+    const outsideLane = clamp(horse.lane + 1.6 + horse.aggression * 0.55, 1.05, TRACK_MODEL.laneCount - 0.05);
+    const insideLane = clamp(horse.lane - 1.0, 1.05, TRACK_MODEL.laneCount - 0.05);
+    const canGoOutside = !isLaneBlocked(horse, allHorses, outsideLane);
+    const canGoInside = !isLaneBlocked(horse, allHorses, insideLane);
+    if (canGoOutside) targetLane = lerp(preferred, outsideLane, clamp(traffic.pressure * 1.25, 0, 1));
+    else if (canGoInside && ['逃げ', '先行', '自在'].includes(horse.style)) targetLane = lerp(preferred, insideLane, clamp(traffic.pressure, 0, 0.85));
+  }
+
+  const laneRate = TRACK_MODEL.laneChangePerSec * (p < 0.08 ? 0.45 : p > 0.78 ? 1.18 : 1.0);
+  const diff = clamp(targetLane - horse.lane, -laneRate * dt, laneRate * dt);
+  horse.lane = clamp(horse.lane + diff, 1.05, TRACK_MODEL.laneCount - 0.05);
+  horse.laneIntent = targetLane;
+}
+
+function calculateTargetSpeed(horse, allHorses, rank, distance, baseTime, raceSeconds) {
+  if (horse.finished) return horse.speed * 0.72;
+  const p = clamp(horse.progress / distance, 0, 1);
+  const staminaRatio = clamp(horse.staminaNow / Math.max(1, Number(horse.stamina) || 70), 0, 1.2);
+  const styleMult = stylePaceMultiplier(horse.style, p);
+  const burstMult = 1 + ((Number(horse.burst) || 70) - 70) / 520 * smoothstep(0.64, 0.96, p);
+  const baseMult = 1 + ((Number(horse.base) || 70) - 70) / 780;
+  const staminaMult = 0.86 + staminaRatio * 0.16;
+  const pathMult = pathLossMultiplier(horse, p);
+  const blockMult = 1 - Math.min(0.22, horse.blockPressure * 0.19);
+  const startRamp = 0.44 + smoothstep(0.00, 0.055, p) * 0.56;
+  const stride = 1 + Math.sin(raceSeconds * 3.2 + horse.phaseSeed) * 0.010;
+  const pressureBoost = p > 0.76 ? 1 + (1 - clamp((rank - 1) / Math.max(1, allHorses.length - 1), 0, 1)) * 0.018 : 1;
+
+  return horse.baseSpeed * styleMult * burstMult * baseMult * staminaMult * pathMult * blockMult * startRamp * stride * pressureBoost;
+}
+
+function stylePaceMultiplier(style, p) {
+  const early = 1 - smoothstep(0.16, 0.40, p);
+  const mid = smoothstep(0.22, 0.52, p) * (1 - smoothstep(0.64, 0.82, p));
+  const late = smoothstep(0.62, 0.96, p);
+  const map = {
+    '逃げ': 1.065 * early + 1.005 * mid + 0.972 * late,
+    '先行': 1.030 * early + 1.018 * mid + 1.004 * late,
+    '差し': 0.962 * early + 1.000 * mid + 1.055 * late,
+    '追込': 0.925 * early + 0.992 * mid + 1.090 * late,
+    '自在': 1.005 * early + 1.012 * mid + 1.026 * late
+  };
+  return map[style] ?? (1.0 * early + 1.0 * mid + 1.0 * late);
+}
+
+function pathLossMultiplier(horse, p) {
+  let mult = 1;
+  if (isCornerProgress(p)) {
+    const outer = Math.max(0, horse.lane - 1);
+    mult -= outer * 0.0018;
+  }
+  if (state.settings.course === 'ダート' && horse.lane > 9) mult -= 0.008;
+  if (state.settings.going === '重' || state.settings.going === '不良') {
+    mult -= Math.max(0, horse.lane - 8) * 0.0008;
+  }
+  return clamp(mult, 0.94, 1.025);
+}
+
+function calcPreferredLane(horse, rank, total, p) {
+  const rankNorm = clamp((rank - 1) / Math.max(1, total - 1), 0, 1);
+  const styleBase = {
+    '逃げ': 1.55 + rankNorm * 0.75,
+    '先行': 2.7 + rankNorm * 1.15,
+    '差し': 5.2 + rankNorm * 2.2,
+    '追込': 7.2 + rankNorm * 2.8,
+    '自在': 4.1 + rankNorm * 1.8
+  }[horse.style] ?? 4.8;
+  const middleBase = {
+    '逃げ': 2.0,
+    '先行': 3.6,
+    '差し': 6.9,
+    '追込': 8.8,
+    '自在': 5.5
+  }[horse.style] ?? 5.5;
+  const finalFan = {
+    '逃げ': 2.6,
+    '先行': 4.3,
+    '差し': 8.8,
+    '追込': 11.4,
+    '自在': 6.7
+  }[horse.style] ?? 6.7;
+
+  let lane = horse.gateLane;
+  lane = lerp(lane, styleBase, smoothstep(0.035, 0.18, p));
+  lane = lerp(lane, middleBase, smoothstep(0.25, 0.56, p));
+  lane = lerp(lane, finalFan + horse.pathBias, smoothstep(0.72, 0.91, p));
+
+  if (isCornerProgress(p)) {
+    const cornerPull = ['逃げ', '先行'].includes(horse.style) ? -0.65 : horse.style === '追込' ? 0.80 : 0.30;
+    lane += cornerPull;
+  }
+
+  if (p > 0.78) {
+    lane += (rankNorm - 0.5) * 2.0;
+  }
+
+  return clamp(lane, 1.05, TRACK_MODEL.laneCount - 0.05);
+}
+
+function findTrafficPressure(horse, allHorses) {
+  let pressure = 0;
+  let nearestGap = Infinity;
+  for (const other of allHorses) {
+    if (other.number === horse.number || other.finished) continue;
+    const forwardGap = other.progress - horse.progress;
+    if (forwardGap <= 0 || forwardGap > TRACK_MODEL.blockGapMeters) continue;
+    const laneGap = Math.abs(other.lane - horse.lane);
+    if (laneGap > TRACK_MODEL.sideGapLane) continue;
+    const p = (1 - forwardGap / TRACK_MODEL.blockGapMeters) * (1 - laneGap / TRACK_MODEL.sideGapLane);
+    if (p > pressure) pressure = p;
+    if (forwardGap < nearestGap) nearestGap = forwardGap;
+  }
+  return { pressure: clamp(pressure, 0, 1), nearestGap };
+}
+
+function isLaneBlocked(horse, allHorses, lane) {
+  return allHorses.some(other => {
+    if (other.number === horse.number || other.finished) return false;
+    const gap = other.progress - horse.progress;
+    return gap > -4 && gap < 12 && Math.abs(other.lane - lane) < 0.70;
+  });
+}
+
+function recordRaceFrame(simHorses, raceSeconds, distance) {
+  const leaderProgress = Math.max(...simHorses.map(h => h.progress / distance), 0);
+  const phase = getFramePhase(leaderProgress);
+  return {
+    raceSeconds,
+    phase,
+    horses: simHorses.map(horse => {
+      const rawProgress = horse.progress / distance;
+      return {
+        number: horse.number,
+        lane: horse.lane,
+        x: laneToPercent(horse.lane),
+        y: progressToYPercent(rawProgress),
+        rawProgress,
+        speed: horse.speed,
+        staminaNow: horse.staminaNow
+      };
+    })
+  };
+}
+
+function sampleRaceFrame(frames, t) {
+  if (!frames.length) return { raceSeconds: 0, phase: { key: 'start', label: 'スタート' }, horses: [] };
+  if (frames.length === 1 || t <= 0) return frames[0];
+  if (t >= 1) return frames[frames.length - 1];
+  const exact = t * (frames.length - 1);
+  const i = Math.floor(exact);
+  const local = exact - i;
+  const a = frames[i];
+  const b = frames[Math.min(frames.length - 1, i + 1)];
+  const byNumber = new Map(a.horses.map(h => [h.number, h]));
+  return {
+    raceSeconds: lerp(a.raceSeconds, b.raceSeconds, local),
+    phase: b.phase,
+    horses: b.horses.map(to => {
+      const from = byNumber.get(to.number) || to;
+      return {
+        number: to.number,
+        lane: lerp(from.lane, to.lane, local),
+        x: lerp(from.x, to.x, local),
+        y: lerp(from.y, to.y, local),
+        rawProgress: lerp(from.rawProgress, to.rawProgress, local),
+        speed: lerp(from.speed, to.speed, local),
+        staminaNow: lerp(from.staminaNow, to.staminaNow, local)
+      };
+    })
+  };
+}
+
+function progressToYPercent(rawProgress) {
+  const onCourse = clamp(rawProgress, 0, 1);
+  const displayProgress = Math.pow(onCourse, 0.82);
+  const overrun = Math.max(0, rawProgress - 1);
+  return clamp(
+    lerp(TRACK_MODEL.startY, TRACK_MODEL.finishY, displayProgress) - overrun * 38,
+    TRACK_MODEL.overrunY,
+    TRACK_MODEL.startY
+  );
+}
+
+function getFramePhase(progress) {
+  const p = clamp(progress, 0, 1.2);
+  if (p < .08) return { key: 'start', label: 'スタート' };
+  if (p < .28) return { key: 'corner', label: '第1コーナー' };
+  if (p < .52) return { key: 'back', label: '向正面' };
+  if (p < .66) return { key: 'corner', label: '第3コーナー' };
+  if (p < .80) return { key: 'corner', label: '第4コーナー' };
+  if (p < .97) return { key: 'final', label: '最後の直線' };
+  return { key: 'goal', label: 'ゴールシーン' };
+}
+
+function isCornerProgress(p) {
+  return (p >= 0.08 && p < 0.28) || (p >= 0.56 && p < 0.80);
+}
+
+function getReplayDurationMs(distance) {
+  const d = Number(distance) || 2400;
+  return clamp(7200 + d * 1.42, 8800, 12800);
+}
+
+function getHorseByNumber(number) {
+  return state.horses.find(horse => horse.number === number);
 }
 
 function renderFinishBoard(rows) {
