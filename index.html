@@ -1,243 +1,244 @@
 <!doctype html>
 <html lang="ja">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-  <title>Horse Race Simulator</title>
-  <!-- BUILD: JRA-like private version / 20260608-0215 / real-data-loader-v7 -->
-  <link rel="icon" type="image/png" href="EE73C096-AE52-47CE-BAE4-299AC523ECFB.png" />
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>Horse Race Simulator V8</title>
+  <meta name="theme-color" content="#08130f" />
+  <link rel="icon" href="EE73C096-AE52-47CE-BAE4-299AC523ECFB.png" />
   <link rel="apple-touch-icon" href="EE73C096-AE52-47CE-BAE4-299AC523ECFB.png" />
-  <meta name="theme-color" content="#06111f" />
-  <link rel="stylesheet" href="style.css?v=20260608-0215" />
+  <link rel="stylesheet" href="style_v8.css?v=20260608-v8" onerror="this.onerror=null;this.href='style.css?v=20260608-v8'" />
 </head>
 <body>
   <div class="app-shell">
-    <header class="app-header">
-      <div class="nav-row">
-        <button class="nav-btn" id="settingsBtn" type="button">お好み設定</button>
-        <div class="nav-spacer"></div>
-        <button class="nav-btn" id="makerBtn" type="button">レースメーカー</button>
-        <button class="nav-btn" id="statsBtn" type="button">集計画面</button>
-      </div>
-
+    <header class="topbar">
       <div class="brand">
         <img class="brand-icon" src="EE73C096-AE52-47CE-BAE4-299AC523ECFB.png" alt="" />
-        <h1>Horse Race Simulator</h1>
-        <span class="build-badge">V7</span>
-        <p>シミュレーター</p>
+        <div>
+          <h1>Horse Race Simulator</h1>
+          <p id="raceSubTitle">実データ対応・Canvasレースエンジン V8</p>
+        </div>
       </div>
-
-      <div class="race-summary" id="raceSummary"></div>
+      <nav class="top-actions" aria-label="メニュー">
+        <button class="tab-button" type="button" data-panel="settingsPanel">お好み設定</button>
+        <button class="tab-button" type="button" data-panel="makerPanel">レースメーカー</button>
+        <button class="tab-button" type="button" data-panel="statsPanel">集計画面</button>
+      </nav>
     </header>
 
-    <main id="simulatorView" class="simulator-layout">
-      <section class="panel runners-panel">
-        <div class="panel-title">出馬表</div>
-        <div class="runner-list" id="runnerList"></div>
-      </section>
-
-      <section class="track-panel">
-        <div class="track-controls">
-          <button class="race-btn primary" id="startBtn" type="button">▶ 再生</button>
-          <button class="race-btn" id="replayBtn" type="button" disabled>↻ リプレイ</button>
-          <button class="race-btn" id="resetBtn" type="button">リセット</button>
-        </div>
-
-        <div class="track" id="track">
-          <div class="goal-line">ゴール</div>
-          <div class="start-label">スタート</div>
-        </div>
-
-        <div class="disclaimer">
-          このアプリはエンターテインメント目的の架空レースシミュレーターです。実際の競馬予想、馬券購入、投資判断を助言するものではありません。
-        </div>
-      </section>
-
-      <section class="panel side-panel">
-        <div class="panel-title">レースログ</div>
-        <div class="log-box" id="raceLog"></div>
-
-        <div class="panel-title sub">着順掲示板</div>
-        <div class="result-list" id="resultList"></div>
-      </section>
-    </main>
-
-    <section id="statsView" class="stats-view hidden">
-      <div class="stats-head">
-        <button class="nav-btn" id="backToRaceBtn" type="button">← レースへ戻る</button>
-        <div>
-          <h2>シミュレーション集計</h2>
-          <p id="trialCount">試行 0 回</p>
-        </div>
+    <section class="race-meta-card" aria-label="レース情報">
+      <div>
+        <span class="meta-label">レース</span>
+        <strong id="raceNameLabel">V8 サンプルレース</strong>
       </div>
-
-      <div class="stats-race-card" id="statsRaceCard"></div>
-      <p class="sort-note">見出しクリックで並べ替え</p>
-
-      <div class="stats-actions">
-        <button class="race-btn primary" id="run100Btn" type="button">100回シミュレーション</button>
-        <button class="race-btn" id="run1000Btn" type="button">1000回</button>
-        <button class="race-btn danger" id="clearStatsBtn" type="button">集計クリア</button>
+      <div>
+        <span class="meta-label">条件</span>
+        <strong id="raceConditionLabel">東京 / 芝2400m / 良</strong>
       </div>
-
-      <div class="stats-table-wrap">
-        <table class="stats-table" id="statsTable">
-          <thead>
-            <tr>
-              <th data-sort="mark">推奨印</th>
-              <th data-sort="number">出馬情報</th>
-              <th data-sort="score">総合スコア</th>
-              <th data-sort="avg">平均着順</th>
-              <th data-sort="win">勝率</th>
-              <th data-sort="place2">連対率</th>
-              <th data-sort="place3">複勝率</th>
-            </tr>
-          </thead>
-          <tbody id="statsBody"></tbody>
-        </table>
+      <div>
+        <span class="meta-label">状態</span>
+        <strong id="engineStatusLabel">待機中</strong>
       </div>
+      <div class="build-badge" id="buildBadge">BUILD V8</div>
     </section>
+
+    <main class="race-layout">
+      <aside class="panel entry-panel">
+        <div class="panel-title-row">
+          <h2>出馬表</h2>
+          <span id="entryCountLabel" class="mini-pill">18頭</span>
+        </div>
+        <div class="table-scroll entry-table-wrap">
+          <table class="entry-table">
+            <thead>
+              <tr>
+                <th>印</th>
+                <th>枠</th>
+                <th>馬</th>
+                <th>騎手</th>
+                <th>人気</th>
+                <th>指数</th>
+              </tr>
+            </thead>
+            <tbody id="entryTableBody"></tbody>
+          </table>
+        </div>
+      </aside>
+
+      <section class="panel race-stage-panel">
+        <div class="stage-toolbar">
+          <div>
+            <div class="phase-chip" id="phaseChip">スタート前</div>
+            <div class="progress-text" id="progressText">0m / 2400m</div>
+          </div>
+          <div class="race-buttons">
+            <button id="startRaceBtn" class="primary-btn" type="button">レース開始</button>
+            <button id="pauseRaceBtn" type="button" disabled>一時停止</button>
+            <button id="resetRaceBtn" type="button">リセット</button>
+          </div>
+        </div>
+        <div class="canvas-wrap" id="canvasWrap">
+          <canvas id="raceCanvas" aria-label="レース画面"></canvas>
+          <div id="countdownOverlay" class="countdown-overlay" hidden></div>
+          <div id="goalScene" class="goal-scene" aria-live="polite">
+            <div class="goal-scene-head">
+              <span>GOAL SCENE</span>
+              <strong id="goalScenePhase">最後の直線</strong>
+            </div>
+            <canvas id="goalCanvas" aria-label="ゴールシーン"></canvas>
+            <div class="goal-finish-board">
+              <div class="goal-board-title">ゴール速報</div>
+              <ol id="goalMiniList"></ol>
+            </div>
+          </div>
+        </div>
+        <div class="stage-footer-note">
+          ※ エンタメ用シミュレーターです。馬券購入や投資判断の助言ではありません。
+        </div>
+      </section>
+
+      <aside class="panel side-panel">
+        <section class="sub-panel result-panel">
+          <div class="panel-title-row">
+            <h2>着順掲示板</h2>
+            <span id="finishCountLabel" class="mini-pill">0/18</span>
+          </div>
+          <div class="table-scroll result-table-wrap">
+            <table class="result-table">
+              <thead>
+                <tr>
+                  <th>着</th>
+                  <th>馬番</th>
+                  <th>馬名</th>
+                  <th>タイム</th>
+                  <th>着差</th>
+                </tr>
+              </thead>
+              <tbody id="resultTableBody"></tbody>
+            </table>
+          </div>
+        </section>
+        <section class="sub-panel log-panel-wrap">
+          <div class="panel-title-row">
+            <h2>レースログ</h2>
+            <button id="clearLogBtn" class="tiny-btn" type="button">消去</button>
+          </div>
+          <div id="raceLog" class="race-log"></div>
+        </section>
+      </aside>
+    </main>
   </div>
 
-  <dialog class="modal" id="settingsModal">
-    <form method="dialog" class="modal-card">
-      <div class="modal-head">
+  <section id="settingsPanel" class="drawer-panel" hidden>
+    <div class="drawer-inner">
+      <div class="drawer-header">
         <h2>お好み設定</h2>
-        <button class="close-btn" type="submit">×</button>
+        <button class="close-panel-btn" type="button">閉じる</button>
       </div>
-      <label class="check-row">
-        <input id="soundInput" type="checkbox" />
-        <span>効果音風のログ演出を強める</span>
-      </label>
-      <label class="check-row">
-        <input id="compactInput" type="checkbox" />
-        <span>スマホ表示をコンパクトにする</span>
-      </label>
-      <button class="race-btn primary full" id="savePreferenceBtn" value="default" type="button">保存</button>
-    </form>
-  </dialog>
-
-  <dialog class="modal" id="makerModal">
-    <form method="dialog" class="modal-card">
-      <div class="modal-head">
-        <h2>レースメーカー</h2>
-        <button class="close-btn" type="submit">×</button>
-      </div>
-
-      <label>
-        レース名
-        <input id="raceNameInput" type="text" maxlength="28" />
-      </label>
-
-      <div class="grid-2">
+      <div class="settings-grid">
         <label>
-          年月日
-          <input id="raceDateInput" type="date" />
+          レース速度
+          <select id="speedSelect">
+            <option value="7.5">標準</option>
+            <option value="10.5" selected>速め</option>
+            <option value="14">高速</option>
+          </select>
         </label>
         <label>
-          競馬場
-          <select id="venueInput">
-            <option>東京競馬場</option>
-            <option>中山競馬場</option>
-            <option>京都競馬場</option>
-            <option>阪神競馬場</option>
-            <option>札幌競馬場</option>
-            <option>函館競馬場</option>
-            <option>新潟競馬場</option>
-            <option>中京競馬場</option>
-            <option>小倉競馬場</option>
-            <option>架空競馬場</option>
+          展開のブレ
+          <input id="chaosRange" type="range" min="0" max="100" value="38" />
+          <span id="chaosLabel">38</span>
+        </label>
+        <label>
+          馬群の詰まり
+          <input id="blockRange" type="range" min="0" max="100" value="62" />
+          <span id="blockLabel">62</span>
+        </label>
+        <label>
+          ゴールシーン開始
+          <select id="goalStartSelect">
+            <option value="220">残り220m</option>
+            <option value="300" selected>残り300m</option>
+            <option value="400">残り400m</option>
           </select>
         </label>
       </div>
+    </div>
+  </section>
 
-      <div class="grid-2">
-        <label>
-          年齢条件
-          <select id="ageInput">
-            <option>3歳</option>
-            <option>2歳</option>
-            <option>3歳以上</option>
-            <option>4歳以上</option>
-          </select>
-        </label>
-        <label>
-          格付け
-          <select id="gradeInput">
-            <option>G1</option>
-            <option>G2</option>
-            <option>G3</option>
-            <option>OP</option>
-            <option>条件戦</option>
-          </select>
-        </label>
+  <section id="makerPanel" class="drawer-panel" hidden>
+    <div class="drawer-inner maker-drawer">
+      <div class="drawer-header">
+        <h2>レースメーカー / 実データ読み込み</h2>
+        <button class="close-panel-btn" type="button">閉じる</button>
       </div>
-
-      <div class="grid-2">
-        <label>
-          コース
-          <select id="courseInput">
-            <option value="芝">芝</option>
-            <option value="ダート">ダート</option>
-          </select>
-        </label>
-        <label>
-          距離
-          <select id="distanceInput">
-            <option value="1200">1200m</option>
-            <option value="1600">1600m</option>
-            <option value="1800">1800m</option>
-            <option value="2000">2000m</option>
-            <option value="2400">2400m</option>
-            <option value="3000">3000m</option>
-            <option value="3200">3200m</option>
-          </select>
-        </label>
-      </div>
-
-      <div class="grid-2">
-        <label>
-          馬場
-          <select id="goingInput">
-            <option>良</option>
-            <option>稍重</option>
-            <option>重</option>
-            <option>不良</option>
-          </select>
-        </label>
-        <label>
-          天候
-          <select id="weatherInput">
-            <option>晴</option>
-            <option>曇</option>
-            <option>雨</option>
-          </select>
-        </label>
-      </div>
-
-      <div class="real-data-box">
-        <div class="real-data-title">実データ読み込み</div>
-        <p class="real-data-note">同じ階層に <code>race_data_derby_2025.json</code> を置くと、下のボタンから反映できます。CSVではなく、まずJSON形式に対応しています。</p>
-        <div class="real-data-actions">
-          <button class="race-btn" id="loadDerbyDataBtn" type="button">2025日本ダービー読込</button>
-          <label class="race-btn file-picker" for="realDataFileInput">JSONファイル選択</label>
-          <input id="realDataFileInput" class="visually-hidden" type="file" accept=".json,application/json" />
+      <div class="maker-grid">
+        <div class="maker-card">
+          <h3>基本設定</h3>
+          <label>レース名<input id="raceNameInput" type="text" value="V8 サンプルレース" /></label>
+          <label>開催<input id="venueInput" type="text" value="東京競馬場" /></label>
+          <label>距離<input id="distanceInput" type="number" min="800" max="3600" step="100" value="2400" /></label>
+          <label>馬場
+            <select id="surfaceInput">
+              <option value="芝" selected>芝</option>
+              <option value="ダート">ダート</option>
+            </select>
+          </label>
+          <label>状態
+            <select id="conditionInput">
+              <option value="良" selected>良</option>
+              <option value="稍重">稍重</option>
+              <option value="重">重</option>
+              <option value="不良">不良</option>
+            </select>
+          </label>
+          <button id="applyRaceMetaBtn" type="button">基本設定を反映</button>
         </div>
-        <label>
-          JSON貼り付け
-          <textarea id="realDataPasteInput" rows="5" placeholder='{"raceName":"東京優駿", "entries":[...]}'></textarea>
-        </label>
-        <button class="race-btn" id="applyPastedDataBtn" type="button">貼り付けJSONを反映</button>
-        <div class="real-data-status" id="realDataStatus">未読み込み</div>
+        <div class="maker-card">
+          <h3>実データ</h3>
+          <div class="button-row">
+            <button id="loadDerbyBtn" type="button">日本ダービーJSON読込</button>
+            <label class="file-button">JSON選択<input id="jsonFileInput" type="file" accept="application/json,.json" /></label>
+          </div>
+          <textarea id="jsonPasteArea" spellcheck="false" placeholder="race_data JSONを貼り付け"></textarea>
+          <button id="applyJsonBtn" type="button">貼り付けJSONを反映</button>
+          <p class="maker-note">対応キー：raceName / venue / surface / distance / condition / entries / fixedMarks</p>
+        </div>
       </div>
+    </div>
+  </section>
 
-      <div class="modal-actions">
-        <button class="race-btn" id="autoHorseBtn" type="button">出馬表を自動生成</button>
-        <button class="race-btn primary" id="saveRaceBtn" value="default" type="button">保存</button>
+  <section id="statsPanel" class="drawer-panel" hidden>
+    <div class="drawer-inner stats-drawer">
+      <div class="drawer-header">
+        <h2>集計画面</h2>
+        <button class="close-panel-btn" type="button">閉じる</button>
       </div>
-    </form>
-  </dialog>
+      <div class="stats-actions">
+        <button id="sim100Btn" type="button">100回シミュレーション</button>
+        <button id="sim1000Btn" type="button">1000回シミュレーション</button>
+        <span id="statsStatus">未集計</span>
+      </div>
+      <div class="table-scroll stats-table-wrap">
+        <table class="stats-table">
+          <thead>
+            <tr>
+              <th>印</th>
+              <th>馬番</th>
+              <th>馬名</th>
+              <th>勝率</th>
+              <th>連対率</th>
+              <th>複勝率</th>
+              <th>平均着順</th>
+              <th>指数</th>
+            </tr>
+          </thead>
+          <tbody id="statsTableBody"></tbody>
+        </table>
+      </div>
+    </div>
+  </section>
 
-  <script src="app.js?v=20260608-0215"></script>
+  <script src="app_v8.js?v=20260608-v8" onerror="var s=document.createElement('script');s.src='app.js?v=20260608-v8';document.body.appendChild(s);"></script>
 </body>
 </html>
