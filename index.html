@@ -1,0 +1,150 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>Race Maker - 個人用レースシミュレーター</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div class="app-shell">
+    <header class="topbar">
+      <button class="ghost-btn" id="settingsBtn" type="button">設定</button>
+      <div class="title-wrap">
+        <div class="app-title">🏇 Race Maker</div>
+        <div class="app-subtitle">架空競馬レースシミュレーター</div>
+      </div>
+      <button class="ghost-btn" id="statsBtn" type="button">集計</button>
+    </header>
+
+    <section class="race-info-panel">
+      <div class="race-name" id="raceName">東京記念杯</div>
+      <div class="race-meta" id="raceMeta">芝 1600m / 良 / 晴 / 18頭</div>
+    </section>
+
+    <main class="layout">
+      <aside class="panel runners-panel">
+        <div class="panel-header">
+          <span>出走馬</span>
+          <button class="small-btn" id="autoHorseBtn" type="button">自動生成</button>
+        </div>
+        <div class="runner-list" id="runnerList"></div>
+      </aside>
+
+      <section class="race-panel">
+        <div class="control-row">
+          <button class="main-btn" id="startBtn" type="button">スタート</button>
+          <button class="main-btn secondary" id="replayBtn" type="button" disabled>リプレイ</button>
+          <button class="main-btn danger" id="resetBtn" type="button">リセット</button>
+        </div>
+
+        <div class="track-wrap">
+          <div class="track-head">
+            <span>START</span>
+            <span>GOAL</span>
+          </div>
+          <div class="track" id="track"></div>
+        </div>
+
+        <p class="notice">
+          このアプリは個人利用・エンタメ目的の架空レースシミュレーターです。実際の競馬予想、馬券購入、投資判断を助言するものではありません。
+        </p>
+      </section>
+
+      <aside class="panel result-panel">
+        <div class="panel-header">レースログ</div>
+        <div class="log-box" id="raceLog"></div>
+
+        <div class="panel-header result-title">着順</div>
+        <div class="result-list" id="resultList"></div>
+      </aside>
+    </main>
+  </div>
+
+  <dialog class="modal" id="settingsModal">
+    <form method="dialog" class="modal-card">
+      <div class="modal-head">
+        <h2>レース設定</h2>
+        <button class="close-btn" type="submit">×</button>
+      </div>
+
+      <label>
+        レース名
+        <input id="raceNameInput" type="text" maxlength="24" />
+      </label>
+
+      <div class="grid-2">
+        <label>
+          距離
+          <select id="distanceInput">
+            <option value="1200">1200m</option>
+            <option value="1600">1600m</option>
+            <option value="2000">2000m</option>
+            <option value="2400">2400m</option>
+            <option value="3200">3200m</option>
+          </select>
+        </label>
+        <label>
+          馬場
+          <select id="goingInput">
+            <option value="良">良</option>
+            <option value="稍重">稍重</option>
+            <option value="重">重</option>
+            <option value="不良">不良</option>
+          </select>
+        </label>
+      </div>
+
+      <div class="grid-2">
+        <label>
+          コース
+          <select id="courseInput">
+            <option value="芝">芝</option>
+            <option value="ダート">ダート</option>
+          </select>
+        </label>
+        <label>
+          天候
+          <select id="weatherInput">
+            <option value="晴">晴</option>
+            <option value="曇">曇</option>
+            <option value="雨">雨</option>
+          </select>
+        </label>
+      </div>
+
+      <button class="main-btn full" id="saveSettingsBtn" value="default" type="button">保存</button>
+    </form>
+  </dialog>
+
+  <dialog class="modal" id="statsModal">
+    <form method="dialog" class="modal-card wide">
+      <div class="modal-head">
+        <h2>集計</h2>
+        <button class="close-btn" type="submit">×</button>
+      </div>
+      <div class="stats-actions">
+        <button class="small-btn" id="run100Btn" type="button">100回シミュレーション</button>
+        <button class="small-btn danger-text" id="clearStatsBtn" type="button">集計クリア</button>
+      </div>
+      <div class="stats-table-wrap">
+        <table class="stats-table">
+          <thead>
+            <tr>
+              <th>馬番</th>
+              <th>馬名</th>
+              <th>勝率</th>
+              <th>連対率</th>
+              <th>複勝率</th>
+              <th>試行</th>
+            </tr>
+          </thead>
+          <tbody id="statsBody"></tbody>
+        </table>
+      </div>
+    </form>
+  </dialog>
+
+  <script src="app.js"></script>
+</body>
+</html>
