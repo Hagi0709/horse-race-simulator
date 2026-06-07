@@ -3,11 +3,11 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-  <title>Horse Race Simulator V9</title>
+  <title>Horse Race Simulator V10</title>
   <meta name="theme-color" content="#08130f" />
   <link rel="icon" href="EE73C096-AE52-47CE-BAE4-299AC523ECFB.png" />
   <link rel="apple-touch-icon" href="EE73C096-AE52-47CE-BAE4-299AC523ECFB.png" />
-  <link rel="stylesheet" href="style.css?v=20260608-v9" />
+  <link rel="stylesheet" href="style.css?v=20260608-v10" />
 </head>
 <body>
   <div class="app-shell">
@@ -16,7 +16,7 @@
         <img class="brand-icon" src="EE73C096-AE52-47CE-BAE4-299AC523ECFB.png" alt="" />
         <div>
           <h1>Horse Race Simulator</h1>
-          <p id="raceSubTitle">実データ対応・Canvasレースエンジン V9</p>
+          <p id="raceSubTitle">実データ対応・本格レースエンジン V10</p>
         </div>
       </div>
       <nav class="top-actions" aria-label="メニュー">
@@ -29,7 +29,7 @@
     <section class="race-meta-card" aria-label="レース情報">
       <div>
         <span class="meta-label">レース</span>
-        <strong id="raceNameLabel">V9 サンプルレース</strong>
+        <strong id="raceNameLabel">V10 サンプルレース</strong>
       </div>
       <div>
         <span class="meta-label">条件</span>
@@ -39,7 +39,7 @@
         <span class="meta-label">状態</span>
         <strong id="engineStatusLabel">待機中</strong>
       </div>
-      <div class="build-badge" id="buildBadge">BUILD V9</div>
+      <div class="build-badge" id="buildBadge">BUILD V10</div>
     </section>
 
     <main class="race-layout">
@@ -79,7 +79,6 @@
         </div>
         <div class="canvas-wrap" id="canvasWrap">
           <canvas id="raceCanvas" aria-label="レース画面"></canvas>
-          <div id="countdownOverlay" class="countdown-overlay" hidden></div>
           <div id="goalScene" class="goal-scene" aria-live="polite">
             <div class="goal-scene-head">
               <span>GOAL SCENE</span>
@@ -88,7 +87,7 @@
             <canvas id="goalCanvas" aria-label="ゴールシーン"></canvas>
             <div class="goal-finish-board">
               <div class="goal-board-title">ゴール速報</div>
-              <ol id="goalMiniList"></ol>
+              <div id="goalMiniList" class="goal-mini-list"></div>
             </div>
           </div>
         </div>
@@ -139,9 +138,9 @@
         <label>
           レース速度
           <select id="speedSelect">
-            <option value="7.5">標準</option>
-            <option value="10.5" selected>速め</option>
-            <option value="14">高速</option>
+            <option value="5.8">じっくり</option>
+            <option value="7.5" selected>標準</option>
+            <option value="10.5">速め</option>
           </select>
         </label>
         <label>
@@ -175,7 +174,7 @@
       <div class="maker-grid">
         <div class="maker-card">
           <h3>基本設定</h3>
-          <label>レース名<input id="raceNameInput" type="text" value="V9 サンプルレース" /></label>
+          <label>レース名<input id="raceNameInput" type="text" value="V10 サンプルレース" /></label>
           <label>開催<input id="venueInput" type="text" value="東京競馬場" /></label>
           <label>距離<input id="distanceInput" type="number" min="800" max="3600" step="100" value="2400" /></label>
           <label>馬場
@@ -202,7 +201,7 @@
           </div>
           <textarea id="jsonPasteArea" spellcheck="false" placeholder="race_data JSONを貼り付け"></textarea>
           <button id="applyJsonBtn" type="button">貼り付けJSONを反映</button>
-          <p class="maker-note">対応キー：raceName / venue / surface / distance / condition / entries / fixedMarks</p>
+          <p class="maker-note">対応キー：raceName / venue / surface / distance / condition / entries / fixedMarks / last3f / distanceAptitude / surfaceAptitude / jockeyScore</p>
         </div>
       </div>
     </div>
@@ -217,7 +216,7 @@
       <div class="stats-actions">
         <button id="sim100Btn" type="button">100回シミュレーション</button>
         <button id="sim1000Btn" type="button">1000回シミュレーション</button>
-        <span id="statsStatus">未集計</span>
+        <span id="statsStatus">未集計 / 予想支援用の確率評価</span>
       </div>
       <div class="table-scroll stats-table-wrap">
         <table class="stats-table">
@@ -239,6 +238,6 @@
     </div>
   </section>
 
-  <script src="app.js?v=20260608-v9"></script>
+  <script src="app.js?v=20260608-v10"></script>
 </body>
 </html>
