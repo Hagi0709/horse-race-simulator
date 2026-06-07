@@ -1,6 +1,6 @@
-const BUILD_VERSION = '2026-06-08 01:36:00 / source-inspired-goal-scene-v6';
+const BUILD_VERSION = '2026-06-08 02:15:00 / real-data-loader-v7';
 
-const STORAGE_KEY = 'horse_race_simulator_private_v6_source_inspired';
+const STORAGE_KEY = 'horse_race_simulator_private_v7_real_data';
 const STYLES = ['逃げ', '先行', '差し', '追込', '自在'];
 const FRAME_COLORS = [
   ['#ffffff', '#111111'], ['#111111', '#ffffff'], ['#f5f5f5', '#111111'], ['#111111', '#ffffff'],
@@ -15,6 +15,7 @@ const HORSE_WORDS_B = ['アドラー', 'ヴィル', 'ン', 'ラムス', 'タス'
 const JOCKEYS = ['佐々木', '横山和', '丹内', '横山武', '川田', '西村淳', 'ディー', '浜中', 'レーン', '坂井瑠', '津村', '岩田康', 'ルメール', '武豊', '荻野極', '戸崎圭', '松山弘', 'ゴンサル'];
 const VENUES = ['東京競馬場', '中山競馬場', '京都競馬場', '阪神競馬場', '札幌競馬場', '函館競馬場', '新潟競馬場', '中京競馬場', '小倉競馬場'];
 const MARKS = ['◎', '○', '▲', '△', '★', '☆'];
+const DERBY_DATA_URL = 'race_data_derby_2025.json';
 
 const defaultState = () => ({
   settings: {
@@ -36,6 +37,14 @@ const defaultState = () => ({
   running: false,
   stopRequested: false,
   stats: {},
+  realData: {
+    enabled: false,
+    sourceName: '',
+    raceId: '',
+    dataQuality: '',
+    fixedMarks: {},
+    generatedAt: ''
+  },
   sortKey: 'score',
   sortDir: 'desc'
 });
@@ -73,6 +82,11 @@ const els = {
   weatherInput: document.getElementById('weatherInput'),
   autoHorseBtn: document.getElementById('autoHorseBtn'),
   saveRaceBtn: document.getElementById('saveRaceBtn'),
+  loadDerbyDataBtn: document.getElementById('loadDerbyDataBtn'),
+  realDataFileInput: document.getElementById('realDataFileInput'),
+  realDataPasteInput: document.getElementById('realDataPasteInput'),
+  applyPastedDataBtn: document.getElementById('applyPastedDataBtn'),
+  realDataStatus: document.getElementById('realDataStatus'),
   run100Btn: document.getElementById('run100Btn'),
   run1000Btn: document.getElementById('run1000Btn'),
   clearStatsBtn: document.getElementById('clearStatsBtn'),
@@ -130,6 +144,7 @@ function generateHorses() {
   });
   state.results = [];
   state.stats = {};
+  state.realData = { ...defaultState().realData };
   saveState();
   renderAll();
 }
@@ -145,7 +160,12 @@ function loadState() {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return false;
     const parsed = JSON.parse(raw);
-    state = { ...defaultState(), ...parsed, settings: { ...defaultState().settings, ...(parsed.settings || {}) } };
+    state = {
+      ...defaultState(),
+      ...parsed,
+      settings: { ...defaultState().settings, ...(parsed.settings || {}) },
+      realData: { ...defaultState().realData, ...(parsed.realData || {}) }
+    };
     return Array.isArray(state.horses) && state.horses.length > 0;
   } catch {
     return false;
@@ -166,26 +186,35 @@ function renderAll() {
 
 function renderRaceInfo() {
   const s = state.settings;
-  els.raceSummary.innerHTML = `<strong>${formatDate(s.raceDate)}</strong>　${escapeHtml(s.venue)}　<strong>${escapeHtml(s.age)}</strong>　${escapeHtml(s.grade)}　${escapeHtml(s.raceName)}　${escapeHtml(s.course)}　${Number(s.distance)}m　${escapeHtml(s.weather)}　${escapeHtml(s.going)}`;
-  els.statsRaceCard.innerHTML = `<strong>${formatDate(s.raceDate)}</strong>　${escapeHtml(s.venue)}<br>${escapeHtml(s.age)}　${escapeHtml(s.grade)}　${escapeHtml(s.raceName)}　${escapeHtml(s.course)}　${Number(s.distance)}m`;
+  const real = state.realData?.enabled
+    ? `<br><span class="real-data-indicator">${escapeHtml(state.realData.sourceName || '実データ')}　${escapeHtml(state.realData.dataQuality || 'loaded')}</span>`
+    : '';
+  els.raceSummary.innerHTML = `<strong>${formatDate(s.raceDate)}</strong>　${escapeHtml(s.venue)}　<strong>${escapeHtml(s.age)}</strong>　${escapeHtml(s.grade)}　${escapeHtml(s.raceName)}　${escapeHtml(s.course)}　${Number(s.distance)}m　${escapeHtml(s.weather)}　${escapeHtml(s.going)}${real}`;
+  els.statsRaceCard.innerHTML = `<strong>${formatDate(s.raceDate)}</strong>　${escapeHtml(s.venue)}<br>${escapeHtml(s.age)}　${escapeHtml(s.grade)}　${escapeHtml(s.raceName)}　${escapeHtml(s.course)}　${Number(s.distance)}m${real}`;
 }
 
 function renderRunners() {
   els.runnerList.innerHTML = state.horses.map((horse, index) => {
     const [bg, fg] = FRAME_COLORS[index % FRAME_COLORS.length];
+    const mark = getFixedMarkForNumber(horse.number);
+    const popularity = Number.isFinite(Number(horse.popularity)) ? `${Number(horse.popularity)}人気` : '';
+    const odds = Number.isFinite(Number(horse.odds)) ? `${Number(horse.odds).toFixed(1)}倍` : (horse.odds || '—');
+    const realFinish = Number.isFinite(Number(horse.realFinish)) ? `<span class="real-finish-chip">実${Number(horse.realFinish)}着</span>` : '';
     return `
-      <div class="runner-card" style="--frame:${bg};--frameText:${fg};">
+      <div class="runner-card ${horse.realData ? 'real-data-runner' : ''}" style="--frame:${bg};--frameText:${fg};">
         <div class="number-badge">${horse.number}</div>
         <div>
-          <div class="horse-name">${escapeHtml(horse.name)}</div>
+          <div class="horse-name">${mark ? `<span class="pre-mark">${mark}</span>` : ''}${escapeHtml(horse.name)}</div>
           <div class="horse-meta">
             <span>${escapeHtml(horse.sexAge || '牡3')}</span>
-            <span>${horse.weight || 57}kg</span>
-            <span>🏇 ${escapeHtml(horse.jockey)}</span>
-            <span class="style-chip">${escapeHtml(horse.style)}</span>
+            <span>${Number.isFinite(Number(horse.weight)) ? `${Number(horse.weight)}kg` : '57kg'}</span>
+            <span>🏇 ${escapeHtml(horse.jockey || '—')}</span>
+            <span class="style-chip">${escapeHtml(horse.style || '差し')}</span>
+            ${popularity ? `<span>${escapeHtml(popularity)}</span>` : ''}
+            ${realFinish}
           </div>
         </div>
-        <div class="odds">${horse.odds}</div>
+        <div class="odds">${escapeHtml(odds)}</div>
       </div>`;
   }).join('');
 }
@@ -936,6 +965,20 @@ function lerp(a, b, t) {
 }
 
 function calcScore(horse, rnd) {
+  if (horse.realData) {
+    const baseScore = Number.isFinite(Number(horse.baseScore)) ? Number(horse.baseScore) : (Number(horse.base) || 70);
+    const distanceBonus = getDistanceBonus(horse.aptitude, Number(state.settings.distance)) * 0.45;
+    const goingBonus = getGoingBonus(state.settings.going, horse.style) * 0.55;
+    const popularity = Number(horse.popularity);
+    const odds = Number(horse.odds);
+    const popularityBonus = Number.isFinite(popularity) ? clamp(12 - popularity * 0.65, -2, 11) : 0;
+    const oddsBonus = Number.isFinite(odds) ? clamp(10 - odds * 0.18, -3, 9) : 0;
+    const recent = Array.isArray(horse.recentResults) ? horse.recentResults : [];
+    const recentBonus = recent.length ? clamp(8 - average(recent) * 1.15, -4, 8) : 0;
+    const resultSignal = Number.isFinite(Number(horse.realFinish)) ? clamp(14 - Number(horse.realFinish) * 0.72, 0, 13) : 0;
+    const random = (rnd() - .5) * 9.0;
+    return baseScore + distanceBonus + goingBonus + popularityBonus + oddsBonus + recentBonus + resultSignal + random;
+  }
   const distanceBonus = getDistanceBonus(horse.aptitude, Number(state.settings.distance));
   const goingBonus = getGoingBonus(state.settings.going, horse.style);
   const weatherPenalty = state.settings.weather === '雨' ? -2.8 : state.settings.weather === '曇' ? .4 : 1.1;
@@ -1014,7 +1057,7 @@ function renderStats() {
       <tr>
         <td class="mark">${row.mark}</td>
         <td>
-          <div class="stats-horse"><span class="number-badge" style="--frame:${bg};--frameText:${fg};">${row.horse.number}</span><span>${escapeHtml(row.horse.name)} <small>${escapeHtml(row.horse.sexAge || '牡3')}　${escapeHtml(row.horse.jockey)}</small></span></div>
+          <div class="stats-horse"><span class="number-badge" style="--frame:${bg};--frameText:${fg};">${row.horse.number}</span><span>${escapeHtml(row.horse.name)} <small>${escapeHtml(row.horse.sexAge || '牡3')}　${escapeHtml(row.horse.jockey || '—')}</small></span></div>
         </td>
         <td>${row.score ? row.score.toFixed(1) + 'pt' : '-'}</td>
         <td>${row.avg ? row.avg.toFixed(1) : '-'}</td>
@@ -1030,6 +1073,22 @@ function assignMarks(rows) {
     row.mark = '';
     row.markRank = 999;
   });
+
+  const fixed = state.realData?.enabled ? (state.realData.fixedMarks || {}) : {};
+  const usedFixed = new Set();
+  let fixedCount = 0;
+  MARKS.forEach((mark, index) => {
+    const number = Number(fixed[mark]);
+    if (!Number.isFinite(number) || usedFixed.has(number)) return;
+    const row = rows.find(item => Number(item.horse.number) === number);
+    if (!row) return;
+    row.mark = mark;
+    row.markRank = index + 1;
+    usedFixed.add(number);
+    fixedCount += 1;
+  });
+  if (fixedCount > 0) return;
+
   const used = new Set();
   const available = rows.filter(row => row.s.run > 0);
   if (!available.length) return;
@@ -1044,17 +1103,11 @@ function assignMarks(rows) {
     used.add(row.horse.number);
   };
 
-  // ◎: 1着経験馬の中で総合力が最大。必ず1頭だけ。
   choose('◎', 1, available.filter(row => row.s.win > 0), row => row.score * 1.5 + row.win * 2.2 + row.place2 - row.avg * 4.0);
-  // ○: 2着以内経験馬の総合上位。◎とは重複しない。
   choose('○', 2, available.filter(row => row.s.place2 > 0), row => row.score * 1.35 + row.place2 * 1.8 + row.win * 1.2 - row.avg * 3.2);
-  // ▲: 2着以内経験馬の次点。○とは重複しない。
   choose('▲', 3, available.filter(row => row.s.place2 > 0), row => row.score * 1.20 + row.place2 * 1.4 + row.place3 * .7 - row.avg * 2.7);
-  // △: 3着以内経験馬の平均着順上位。
   choose('△', 4, available.filter(row => row.s.place3 > 0), row => 220 - row.avg * 18 + row.place3 * .7 + row.score * .28);
-  // ★: 3着以内経験馬の複勝率上位。
   choose('★', 5, available.filter(row => row.s.place3 > 0), row => row.place3 * 2.1 + row.win * .7 + row.score * .18);
-  // ☆: 未選出馬からロマン指数最大。大穴用なので勝率だけで選ばない。
   choose('☆', 6, available, row => row.score * .55 + row.place3 * 1.2 + row.win * 1.5 - row.avg * 1.1 + Number(row.horse.odds || 0) * .08);
 }
 
@@ -1141,6 +1194,242 @@ function saveRaceSettings() {
   els.makerModal.close();
 }
 
+
+function setRealDataStatus(message, type = '') {
+  if (!els.realDataStatus) return;
+  els.realDataStatus.textContent = message;
+  els.realDataStatus.classList.remove('ok', 'error');
+  if (type) els.realDataStatus.classList.add(type);
+}
+
+async function loadBundledDerbyData() {
+  try {
+    setRealDataStatus('race_data_derby_2025.json を読み込み中…');
+    const response = await fetch(`${DERBY_DATA_URL}?v=${Date.now()}`, { cache: 'no-store' });
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const data = await response.json();
+    applyRealRaceData(data, { sourceName: DERBY_DATA_URL });
+  } catch (error) {
+    setRealDataStatus(`読み込み失敗：${error.message}。JSONをGitHubのindex.htmlと同じ階層に置いてください。`, 'error');
+  }
+}
+
+function handleRealDataFile(event) {
+  const file = event.target.files?.[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    try {
+      const data = JSON.parse(String(reader.result || ''));
+      applyRealRaceData(data, { sourceName: file.name });
+    } catch (error) {
+      setRealDataStatus(`JSON解析エラー：${error.message}`, 'error');
+    }
+  };
+  reader.onerror = () => setRealDataStatus('ファイル読み込みに失敗しました。', 'error');
+  reader.readAsText(file, 'utf-8');
+}
+
+function applyPastedRealData() {
+  try {
+    const raw = els.realDataPasteInput?.value?.trim();
+    if (!raw) {
+      setRealDataStatus('貼り付け欄が空です。', 'error');
+      return;
+    }
+    const data = JSON.parse(raw);
+    applyRealRaceData(data, { sourceName: 'pasted-json' });
+  } catch (error) {
+    setRealDataStatus(`JSON解析エラー：${error.message}`, 'error');
+  }
+}
+
+function applyRealRaceData(data, options = {}) {
+  const normalized = normalizeRaceData(data, options);
+  if (!normalized.horses.length) throw new Error('entries が空です。');
+
+  state.settings = {
+    ...state.settings,
+    raceName: normalized.settings.raceName,
+    raceDate: normalized.settings.raceDate,
+    venue: normalized.settings.venue,
+    age: normalized.settings.age,
+    grade: normalized.settings.grade,
+    course: normalized.settings.course,
+    distance: normalized.settings.distance,
+    going: normalized.settings.going,
+    weather: normalized.settings.weather
+  };
+  state.horses = normalized.horses;
+  state.results = [];
+  state.replaySeed = null;
+  state.stats = {};
+  state.realData = normalized.realData;
+  saveState();
+  renderAll();
+  setRealDataStatus(`${normalized.realData.sourceName} を反映しました：${state.horses.length}頭 / ${state.settings.raceName}`, 'ok');
+  addLog(`<strong>実データ反映。</strong>${escapeHtml(state.settings.raceName)}の出馬表を読み込みました。`);
+}
+
+function normalizeRaceData(data, options = {}) {
+  if (!data || typeof data !== 'object') throw new Error('データ形式が不正です。');
+  const entries = Array.isArray(data.entries) ? data.entries : [];
+  const sorted = entries
+    .filter(entry => entry && typeof entry === 'object')
+    .sort((a, b) => (Number(a.number) || 999) - (Number(b.number) || 999));
+  const fieldSize = sorted.length || Number(data.fieldSize) || 18;
+  const distance = Number(data.distance) || 2400;
+  const settings = {
+    raceName: String(data.raceName || data.displayName || '実データレース'),
+    raceDate: normalizeDate(data.date) || '2025-06-01',
+    venue: String(data.venue || '東京競馬場'),
+    age: String(data.ageClass || '3歳'),
+    grade: String(data.grade || 'G1'),
+    course: String(data.surface || data.course || '芝'),
+    distance,
+    going: String(data.condition || data.going || '良'),
+    weather: String(data.weather || '晴')
+  };
+
+  const horses = sorted.map((entry, index) => normalizeEntry(entry, index, fieldSize, distance));
+  const fixedMarks = sanitizeFixedMarks(data.simulationHints?.fixedMarks, horses) || buildMarksFromScores(horses);
+  return {
+    settings,
+    horses,
+    realData: {
+      enabled: true,
+      sourceName: String(options.sourceName || data.displayName || data.raceName || 'real-data'),
+      raceId: String(data.raceId || ''),
+      dataQuality: String(data.dataQuality?.level || data.dataQuality || 'real-data'),
+      fixedMarks,
+      generatedAt: String(data.generatedAt || '')
+    }
+  };
+}
+
+function normalizeEntry(entry, index, fieldSize, distance) {
+  const number = Number(entry.number) || index + 1;
+  const waku = Number(entry.waku) || Math.ceil(number / 2);
+  const baseScore = Number.isFinite(Number(entry.baseScore)) ? Number(entry.baseScore) : estimateBaseScore(entry);
+  const popularity = Number.isFinite(Number(entry.popularity)) ? Number(entry.popularity) : null;
+  const oddsNum = Number.isFinite(Number(entry.odds)) ? Number(entry.odds) : null;
+  const realFinish = Number.isFinite(Number(entry.realFinish)) ? Number(entry.realFinish) : null;
+  const recent = Array.isArray(entry.recentResults) ? entry.recentResults.map(Number).filter(Number.isFinite) : [];
+  const style = normalizeStyle(entry.style, entry, index);
+  const abilityCore = clamp(baseScore, 42, 105);
+  const popularityBonus = popularity ? clamp(18 - popularity, 0, 18) : 6;
+  const oddsBonus = oddsNum ? clamp(18 - oddsNum * 0.34, -4, 18) : 4;
+  const realBonus = realFinish ? clamp(16 - realFinish * 0.8, 0, 15) : 0;
+  const recentBonus = recent.length ? clamp(12 - average(recent) * 1.7, -5, 10) : 0;
+  const last3f = Number(entry.last3f);
+  const burstFromLast3f = Number.isFinite(last3f) ? clamp(102 - (last3f - 33.0) * 7, 52, 98) : null;
+
+  return {
+    id: crypto.randomUUID ? crypto.randomUUID() : `real-${Date.now()}-${index}`,
+    realData: true,
+    number,
+    waku,
+    name: String(entry.name || `出走馬${number}`),
+    sexAge: String(entry.sexAge || '牡3'),
+    weight: Number.isFinite(Number(entry.weight)) ? Number(entry.weight) : 57,
+    jockey: entry.jockey ? String(entry.jockey) : '—',
+    trainer: entry.trainer ? String(entry.trainer) : '',
+    style,
+    aptitude: inferAptitude(distance),
+    baseScore: Math.round(baseScore * 10) / 10,
+    base: Math.round(clamp(abilityCore * 0.55 + popularityBonus + oddsBonus + realBonus, 45, 100)),
+    stamina: Math.round(clamp(55 + abilityCore * 0.30 + (distance >= 2200 ? 9 : 2) + recentBonus, 45, 100)),
+    burst: Math.round(clamp(burstFromLast3f ?? (52 + abilityCore * 0.34 + oddsBonus + recentBonus), 45, 100)),
+    odds: oddsNum != null ? oddsNum.toFixed(1) : '—',
+    popularity,
+    recentResults: recent,
+    last3f: Number.isFinite(last3f) ? last3f : null,
+    realFinish,
+    realTime: entry.realTime || null,
+    dataConfidence: String(entry.dataConfidence || 'real-data')
+  };
+}
+
+function estimateBaseScore(entry) {
+  let score = 58;
+  const popularity = Number(entry.popularity);
+  const odds = Number(entry.odds);
+  const realFinish = Number(entry.realFinish);
+  if (Number.isFinite(popularity)) score += clamp(20 - popularity * 1.2, 0, 20);
+  if (Number.isFinite(odds)) score += clamp(20 - odds * 0.30, -4, 20);
+  if (Number.isFinite(realFinish)) score += clamp(22 - realFinish * 1.2, 0, 22);
+  const recent = Array.isArray(entry.recentResults) ? entry.recentResults.map(Number).filter(Number.isFinite) : [];
+  if (recent.length) score += clamp(10 - average(recent) * 1.5, -5, 10);
+  return score;
+}
+
+function normalizeStyle(style, entry, index) {
+  const value = String(style || '').trim();
+  if (STYLES.includes(value)) return value;
+  if (/逃/.test(value)) return '逃げ';
+  if (/先/.test(value)) return '先行';
+  if (/追/.test(value)) return '追込';
+  if (/差/.test(value)) return '差し';
+  const fallback = ['先行', '差し', '差し', '追込', '先行', '自在'];
+  return fallback[index % fallback.length];
+}
+
+function inferAptitude(distance) {
+  const d = Number(distance) || 2400;
+  if (d <= 1400) return '短距離';
+  if (d <= 1800) return 'マイル';
+  if (d <= 2400) return '中距離';
+  return '長距離';
+}
+
+function normalizeDate(value) {
+  const raw = String(value || '').trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) return raw;
+  const d = new Date(raw);
+  if (!Number.isNaN(d.getTime())) {
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
+  }
+  return '';
+}
+
+function sanitizeFixedMarks(rawMarks, horses) {
+  if (!rawMarks || typeof rawMarks !== 'object') return null;
+  const horseNumbers = new Set(horses.map(h => Number(h.number)));
+  const usedNumbers = new Set();
+  const fixed = {};
+  for (const mark of MARKS) {
+    const num = Number(rawMarks[mark]);
+    if (!horseNumbers.has(num) || usedNumbers.has(num)) continue;
+    fixed[mark] = num;
+    usedNumbers.add(num);
+  }
+  return Object.keys(fixed).length ? fixed : null;
+}
+
+function buildMarksFromScores(horses) {
+  const sorted = [...horses].sort((a, b) => Number(b.baseScore || 0) - Number(a.baseScore || 0) || a.number - b.number);
+  const fixed = {};
+  MARKS.forEach((mark, index) => {
+    if (sorted[index]) fixed[mark] = sorted[index].number;
+  });
+  return fixed;
+}
+
+function getFixedMarkForNumber(number) {
+  const fixed = state.realData?.fixedMarks || {};
+  for (const mark of MARKS) {
+    if (Number(fixed[mark]) === Number(number)) return mark;
+  }
+  return '';
+}
+
+function average(values) {
+  return values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : 0;
+}
+
 function formatDate(dateString) {
   const d = new Date(`${dateString}T00:00:00`);
   if (Number.isNaN(d.getTime())) return '2026年5月31日';
@@ -1179,6 +1468,9 @@ els.settingsBtn.addEventListener('click', openPreference);
 els.savePreferenceBtn.addEventListener('click', savePreference);
 els.makerBtn.addEventListener('click', openMaker);
 els.saveRaceBtn.addEventListener('click', saveRaceSettings);
+els.loadDerbyDataBtn?.addEventListener('click', loadBundledDerbyData);
+els.realDataFileInput?.addEventListener('change', handleRealDataFile);
+els.applyPastedDataBtn?.addEventListener('click', applyPastedRealData);
 els.autoHorseBtn.addEventListener('click', () => {
   if (!confirm('出馬表と集計を作り直します。よろしいですか？')) return;
   generateHorses();
