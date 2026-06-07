@@ -3,11 +3,11 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-  <title>Horse Race Simulator V10</title>
+  <title>Horse Race Simulator V12</title>
   <meta name="theme-color" content="#08130f" />
   <link rel="icon" href="EE73C096-AE52-47CE-BAE4-299AC523ECFB.png" />
   <link rel="apple-touch-icon" href="EE73C096-AE52-47CE-BAE4-299AC523ECFB.png" />
-  <link rel="stylesheet" href="style.css?v=20260608-v10" />
+  <link rel="stylesheet" href="style.css?v=20260608-v12" />
 </head>
 <body>
   <div class="app-shell">
@@ -16,7 +16,7 @@
         <img class="brand-icon" src="EE73C096-AE52-47CE-BAE4-299AC523ECFB.png" alt="" />
         <div>
           <h1>Horse Race Simulator</h1>
-          <p id="raceSubTitle">実データ対応・本格レースエンジン V10</p>
+          <p id="raceSubTitle">実データ対応・詳細ステータス設定 V12</p>
         </div>
       </div>
       <nav class="top-actions" aria-label="メニュー">
@@ -29,7 +29,7 @@
     <section class="race-meta-card" aria-label="レース情報">
       <div>
         <span class="meta-label">レース</span>
-        <strong id="raceNameLabel">V10 サンプルレース</strong>
+        <strong id="raceNameLabel">V12 サンプルレース</strong>
       </div>
       <div>
         <span class="meta-label">条件</span>
@@ -39,7 +39,7 @@
         <span class="meta-label">状態</span>
         <strong id="engineStatusLabel">待機中</strong>
       </div>
-      <div class="build-badge" id="buildBadge">BUILD V10</div>
+      <div class="build-badge" id="buildBadge">BUILD V12</div>
     </section>
 
     <main class="race-layout">
@@ -174,7 +174,7 @@
       <div class="maker-grid">
         <div class="maker-card">
           <h3>基本設定</h3>
-          <label>レース名<input id="raceNameInput" type="text" value="V10 サンプルレース" /></label>
+          <label>レース名<input id="raceNameInput" type="text" value="V12 サンプルレース" /></label>
           <label>開催<input id="venueInput" type="text" value="東京競馬場" /></label>
           <label>距離<input id="distanceInput" type="number" min="800" max="3600" step="100" value="2400" /></label>
           <label>馬場
@@ -191,6 +191,35 @@
               <option value="不良">不良</option>
             </select>
           </label>
+          <label>天気
+            <select id="weatherInput">
+              <option value="晴" selected>晴</option>
+              <option value="曇">曇</option>
+              <option value="小雨">小雨</option>
+              <option value="雨">雨</option>
+            </select>
+          </label>
+          <label>ペース想定
+            <select id="paceScenarioInput">
+              <option value="スロー">スロー</option>
+              <option value="標準" selected>標準</option>
+              <option value="ハイ">ハイ</option>
+              <option value="超ハイ">超ハイ</option>
+            </select>
+          </label>
+          <label>馬場バイアス
+            <select id="trackBiasInput">
+              <option value="フラット" selected>フラット</option>
+              <option value="内有利">内有利</option>
+              <option value="外差し">外差し</option>
+              <option value="内荒れ">内荒れ</option>
+            </select>
+          </label>
+          <label>
+            内荒れ度
+            <input id="railDamageInput" type="range" min="0" max="100" value="20" />
+            <span id="railDamageLabel">20</span>
+          </label>
           <button id="applyRaceMetaBtn" type="button">基本設定を反映</button>
         </div>
         <div class="maker-card">
@@ -201,9 +230,47 @@
           </div>
           <textarea id="jsonPasteArea" spellcheck="false" placeholder="race_data JSONを貼り付け"></textarea>
           <button id="applyJsonBtn" type="button">貼り付けJSONを反映</button>
-          <p class="maker-note">対応キー：raceName / venue / surface / distance / condition / entries / fixedMarks / last3f / distanceAptitude / surfaceAptitude / jockeyScore</p>
+          <p class="maker-note">対応キー：raceName / venue / surface / distance / condition / weather / paceScenario / trackBiasMode / entries / fixedMarks / last3f / distanceAptitude / surfaceAptitude / courseAptitude / jockeyScore</p>
         </div>
       </div>
+      <div class="horse-editor-card">
+        <div class="editor-title-row">
+          <div>
+            <h3>各馬ステータス設定</h3>
+            <p>指数・脚質・適性・内取り傾向をここで直接調整できます。反映後は出馬表、印、レースエンジン、集計に使われます。</p>
+          </div>
+          <div class="button-row editor-actions">
+            <button id="applyHorseStatusBtn" class="primary-btn" type="button">ステータスを反映</button>
+            <button id="recalcMarksBtn" type="button">印を指数で再計算</button>
+          </div>
+        </div>
+        <div class="horse-editor-scroll">
+          <table class="horse-editor-table">
+            <thead>
+              <tr>
+                <th>馬番</th>
+                <th>馬名</th>
+                <th>脚質</th>
+                <th>人気</th>
+                <th>オッズ</th>
+                <th>基礎</th>
+                <th>速力</th>
+                <th>スタミナ</th>
+                <th>瞬発</th>
+                <th>スタート</th>
+                <th>上がり3F</th>
+                <th>距離適性</th>
+                <th>馬場適性</th>
+                <th>コース適性</th>
+                <th>内取り</th>
+                <th>騎手</th>
+              </tr>
+            </thead>
+            <tbody id="horseStatusBody"></tbody>
+          </table>
+        </div>
+      </div>
+
     </div>
   </section>
 
@@ -238,6 +305,6 @@
     </div>
   </section>
 
-  <script src="app.js?v=20260608-v10"></script>
+  <script src="app.js?v=20260608-v12"></script>
 </body>
 </html>
