@@ -1,6 +1,6 @@
-const BUILD_VERSION = '2026-06-08 00:20:00 / numbered-output-v3';
+const BUILD_VERSION = '2026-06-08 00:40:00 / movement-model-v4';
 
-const STORAGE_KEY = 'horse_race_simulator_private_v3_numbered';
+const STORAGE_KEY = 'horse_race_simulator_private_v4_movement';
 const STYLES = ['逃げ', '先行', '差し', '追込', '自在'];
 const FRAME_COLORS = [
   ['#ffffff', '#111111'], ['#111111', '#ffffff'], ['#f5f5f5', '#111111'], ['#111111', '#ffffff'],
@@ -196,15 +196,20 @@ function renderTrack() {
     const pos = getStartPosition(index);
     return `<div class="horse-marker" id="horse-${horse.number}" style="--frame:${bg};--frameText:${fg};left:${pos.x}%;top:${pos.y}%">${horse.number}</div>`;
   }).join('');
-  els.track.innerHTML = `<div class="goal-line">ゴール</div><div class="start-label">スタート</div>${markers}`;
+  els.track.dataset.phase = 'start';
+  els.track.innerHTML = `
+    <div class="goal-line" aria-hidden="true"></div>
+    <div class="start-gate" aria-hidden="true"></div>
+    <div class="track-phase-label" id="trackPhaseLabel">スタート</div>
+    ${markers}`;
 }
 
 function getStartPosition(index) {
-  const col = index % 9;
-  const row = Math.floor(index / 9);
+  const total = Math.max(1, state.horses.length || 18);
+  const lane = gateToLane(index + 1, total);
   return {
-    x: 16 + col * 8.5 + (row ? 3.8 : 0),
-    y: 95 - row * 4.2
+    x: laneToPercent(lane),
+    y: TRACK_MODEL.startY
   };
 }
 
@@ -233,11 +238,14 @@ function clearRaceView({ keepLog = false } = {}) {
   state.stopRequested = false;
   if (!keepLog) els.raceLog.innerHTML = '';
   renderResults();
+  const label = document.getElementById('trackPhaseLabel');
+  if (label) label.textContent = 'スタート';
+  if (els.track) els.track.dataset.phase = 'start';
   state.horses.forEach((horse, index) => {
     const marker = document.getElementById(`horse-${horse.number}`);
     if (!marker) return;
     const pos = getStartPosition(index);
-    marker.classList.remove('finished');
+    marker.classList.remove('finished', 'is-leading');
     marker.style.left = `${pos.x}%`;
     marker.style.top = `${pos.y}%`;
   });
@@ -260,38 +268,80 @@ async function startRace({ replay = false } = {}) {
   const seed = replay && state.replaySeed ? state.replaySeed : Date.now() + randomInt(1, 999999);
   state.replaySeed = seed;
   const raceData = simulateRace(seededRandom(seed));
+  const finishLog = [];
+  const finishedIds = new Set();
+  const loggedPhases = new Set();
 
-  addLog(`<strong>ゲートオープン。</strong>${escapeHtml(state.settings.raceName)}、${state.horses.length}頭が一斉にスタート。`);
+  addLog(`<strong>ゲートイン完了。</strong>${escapeHtml(state.settings.raceName)}、${state.horses.length}頭が態勢完了。`);
+  await wait(420);
+  if (!state.stopRequested) addLog(`<strong>スタート。</strong>ゲートが開き、一斉に飛び出しました。`);
 
-  const duration = 8300;
-  const frameMs = 90;
-  const frames = Math.ceil(duration / frameMs);
+  const duration = 9800;
+  const startedAt = performance.now();
 
-  for (let frame = 0; frame <= frames; frame++) {
-    if (state.stopRequested) break;
-    const t = frame / frames;
-    raceData.progress.forEach((item, index) => {
-      const marker = document.getElementById(`horse-${item.horse.number}`);
-      if (!marker) return;
-      const pos = item.path(t, index);
-      marker.style.left = `${pos.x}%`;
-      marker.style.top = `${pos.y}%`;
-      marker.classList.toggle('finished', t > .985);
-    });
+  await new Promise(resolve => {
+    const tick = (now) => {
+      if (state.stopRequested) {
+        resolve();
+        return;
+      }
 
-    if (frame === Math.floor(frames * .18)) logLeader(raceData, .18, '序盤');
-    if (frame === Math.floor(frames * .43)) logLeader(raceData, .43, '向正面');
-    if (frame === Math.floor(frames * .68)) logLeader(raceData, .68, '第4コーナー');
-    if (frame === Math.floor(frames * .86)) logLeader(raceData, .86, '最後の直線');
-    await wait(frameMs);
-  }
+      const elapsed = now - startedAt;
+      const t = clamp(elapsed / duration, 0, 1);
+      const phase = getRacePhase(t);
+      updateTrackPhase(phase);
+
+      const rawPositions = raceData.progress.map((item) => ({
+        item,
+        ...item.positionAt(t)
+      }));
+      const visualPositions = resolveVisualPositions(rawPositions);
+      const leader = [...visualPositions].sort((a, b) => a.y - b.y)[0];
+
+      visualPositions.forEach((pos) => {
+        const marker = document.getElementById(`horse-${pos.item.horse.number}`);
+        if (!marker) return;
+        marker.style.left = `${pos.x}%`;
+        marker.style.top = `${pos.y}%`;
+        const finished = pos.rawProgress >= 1;
+        marker.classList.toggle('finished', finished);
+        marker.classList.toggle('is-leading', leader?.item?.horse?.number === pos.item.horse.number && !finished);
+      });
+
+      raceData.results.forEach((result) => {
+        const progressItem = raceData.progress.find(p => p.horse.number === result.number);
+        if (!progressItem) return;
+        const p = progressItem.rawProgressAt(t);
+        if (p < 1 || finishedIds.has(result.number)) return;
+        finishedIds.add(result.number);
+        finishLog.push(result);
+        renderFinishBoard(finishLog);
+        addLog(`${finishLog.length}着 <strong>${result.number}番 ${escapeHtml(result.name)}</strong> がゴール線を通過。`);
+      });
+
+      for (const p of [0.12, 0.33, 0.56, 0.73, 0.88]) {
+        if (t >= p && !loggedPhases.has(p)) {
+          loggedPhases.add(p);
+          logLeaderFromPositions(visualPositions, phase.label);
+        }
+      }
+
+      if (t >= 1) {
+        resolve();
+        return;
+      }
+      requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
+  });
 
   if (!state.stopRequested) {
     state.results = raceData.results;
     updateStats(state.results);
     saveState();
     renderResults();
-    addLog(`<strong>ゴール。</strong>1着は${state.results[0].number}番 ${escapeHtml(state.results[0].name)}。`);
+    updateTrackPhase({ key: 'goal', label: 'ゴールシーン' });
+    addLog(`<strong>確定。</strong>1着は${state.results[0].number}番 ${escapeHtml(state.results[0].name)}。`);
   }
 
   state.running = false;
@@ -301,44 +351,230 @@ async function startRace({ replay = false } = {}) {
   els.replayBtn.disabled = !state.replaySeed;
 }
 
+const TRACK_MODEL = {
+  laneCount: 18,
+  railLeft: 8.5,
+  railRight: 91.5,
+  startY: 94,
+  finishY: 7.8,
+  overrunY: -11,
+  collisionX: 3.0,
+  collisionY: 4.7
+};
+
 function simulateRace(rnd) {
   const distance = Number(state.settings.distance);
+  const total = Math.max(1, state.horses.length || 18);
+  const baseTime = getBaseFinishTime(distance);
+
   const progress = state.horses.map((horse, index) => {
     const score = calcScore(horse, rnd);
-    const time = Math.max(67, 139 - score * .61 + distance / 78 + rnd() * 4.2);
-    const startSpeed = stylePhaseBonus(horse.style, 'start');
-    const midSpeed = stylePhaseBonus(horse.style, 'mid');
-    const endSpeed = stylePhaseBonus(horse.style, 'end');
-    const laneShift = (rnd() - .5) * 7;
-    const waviness = .9 + rnd() * 1.5;
+    const formNoise = (rnd() - .5) * 2.8;
+    const finishTime = Math.max(
+      baseTime - 7.5,
+      baseTime - (score - 70) * .145 + formNoise
+    );
+    const gateLane = gateToLane(index + 1, total);
+    const lanePlan = makeLanePlan(horse, gateLane, rnd);
+    const lateKick = getLateKick(horse.style, rnd);
+    const earlyKick = getEarlyKick(horse.style, rnd);
 
-    const path = (t) => {
-      let p;
-      if (t < .3) p = t / .3 * (.29 + startSpeed);
-      else if (t < .7) p = .29 + ((t - .3) / .4) * (.39 + midSpeed);
-      else p = .68 + ((t - .7) / .3) * (.32 + endSpeed);
-      p += Math.sin((t * 12 + horse.number) * 1.1) * .008;
-      p = Math.min(1, Math.max(0, p));
-
-      const start = getStartPosition(index);
-      const finishX = 50 + (index - 8.5) * .65 + laneShift;
-      const x = start.x + (finishX - start.x) * p + Math.sin(t * Math.PI * 2 * waviness + horse.number) * 1.1;
-      const y = start.y - p * 89;
-      return { x: clamp(x, 8, 92), y: clamp(y, 4.5, 96) };
+    const rawProgressAt = (t) => {
+      const raceClock = t * (baseTime + 5.8);
+      let raw = raceClock / finishTime;
+      raw += earlyKick * smoothstep(0.02, 0.23, t) * (1 - smoothstep(0.28, 0.48, t));
+      raw += lateKick * smoothstep(0.66, 0.96, t);
+      raw += Math.sin((t * 8.2 + horse.number * .37 + lanePlan.phase) * Math.PI) * .0045;
+      return raw;
     };
-    return { horse, score, time, path };
+
+    const positionAt = (t) => {
+      const raw = rawProgressAt(t);
+      const onCourse = clamp(raw, 0, 1);
+      const displayProgress = Math.pow(onCourse, 0.82);
+      const overrun = Math.max(0, raw - 1);
+      const y = lerp(TRACK_MODEL.startY, TRACK_MODEL.finishY, displayProgress)
+        + (overrun > 0 ? -overrun * 42 : 0);
+      const lane = laneAt(t, lanePlan);
+      const x = laneToPercent(lane);
+      return {
+        x: clamp(x, TRACK_MODEL.railLeft + 1.7, TRACK_MODEL.railRight - 1.7),
+        y: clamp(y, TRACK_MODEL.overrunY, TRACK_MODEL.startY),
+        rawProgress: raw,
+        lane
+      };
+    };
+
+    return { horse, score, finishTime, rawProgressAt, positionAt };
   });
 
   const results = [...progress]
-    .sort((a, b) => a.time - b.time)
+    .sort((a, b) => a.finishTime - b.finishTime)
     .map(item => ({
       number: item.horse.number,
       name: item.horse.name,
       score: item.score,
-      time: item.time
+      time: item.finishTime
     }));
 
   return { progress, results };
+}
+
+function renderFinishBoard(rows) {
+  if (!rows.length) {
+    renderResults();
+    return;
+  }
+  els.resultList.innerHTML = rows.map((r, index) => `
+    <div class="result-row">
+      <div class="rank">${index + 1}着</div>
+      <div>${r.number}　${escapeHtml(r.name)}</div>
+      <div class="time">${r.time.toFixed(1)}</div>
+    </div>`).join('');
+}
+
+function getBaseFinishTime(distance) {
+  const d = Number(distance) || 2400;
+  if (d <= 1200) return 70.5;
+  if (d <= 1600) return 94.0;
+  if (d <= 1800) return 107.0;
+  if (d <= 2000) return 120.5;
+  if (d <= 2400) return 145.0;
+  if (d <= 3000) return 187.0;
+  return 202.0;
+}
+
+function gateToLane(gate, total = 18) {
+  if (!Number.isFinite(total) || total <= 1) return 1;
+  const ratio = (clamp(Number(gate) || 1, 1, total) - 1) / (total - 1);
+  return 1 + ratio * (TRACK_MODEL.laneCount - 1);
+}
+
+function laneToPercent(lane) {
+  const ratio = (clamp(lane, 1, TRACK_MODEL.laneCount) - 1) / (TRACK_MODEL.laneCount - 1);
+  return TRACK_MODEL.railLeft + ratio * (TRACK_MODEL.railRight - TRACK_MODEL.railLeft);
+}
+
+function makeLanePlan(horse, gateLane, rnd) {
+  const style = horse.style;
+  const innerBias = {
+    '逃げ': 1.6,
+    '先行': 2.7,
+    '差し': 5.5,
+    '追込': 8.0,
+    '自在': 4.2
+  }[style] ?? 4.8;
+  const middleBias = {
+    '逃げ': 2.2,
+    '先行': 4.0,
+    '差し': 7.3,
+    '追込': 9.5,
+    '自在': 6.0
+  }[style] ?? 6.0;
+  const finalBias = {
+    '逃げ': 2.8,
+    '先行': 4.8,
+    '差し': 9.8,
+    '追込': 12.2,
+    '自在': 7.0
+  }[style] ?? 7.0;
+
+  return {
+    gateLane,
+    first: clamp(innerBias + (rnd() - .5) * 2.0, 1.2, 16.8),
+    middle: clamp(middleBias + (rnd() - .5) * 3.2, 1.2, 17.2),
+    final: clamp(finalBias + (rnd() - .5) * 4.0, 1.2, 17.6),
+    phase: rnd() * Math.PI * 2,
+    weave: .16 + rnd() * .20
+  };
+}
+
+function laneAt(t, plan) {
+  let lane = plan.gateLane;
+  lane = lerp(lane, plan.first, smoothstep(0.08, 0.30, t));
+  lane = lerp(lane, plan.middle, smoothstep(0.34, 0.63, t));
+  lane = lerp(lane, plan.final, smoothstep(0.70, 0.91, t));
+  lane += Math.sin(t * 7.2 + plan.phase) * plan.weave;
+  return clamp(lane, 1.05, TRACK_MODEL.laneCount - .05);
+}
+
+function getEarlyKick(style, rnd) {
+  const base = {
+    '逃げ': .055,
+    '先行': .031,
+    '差し': -.018,
+    '追込': -.042,
+    '自在': .010
+  }[style] ?? 0;
+  return base + (rnd() - .5) * .012;
+}
+
+function getLateKick(style, rnd) {
+  const base = {
+    '逃げ': -.012,
+    '先行': .006,
+    '差し': .040,
+    '追込': .065,
+    '自在': .025
+  }[style] ?? 0;
+  return base + (rnd() - .5) * .018;
+}
+
+function resolveVisualPositions(positions) {
+  const sorted = [...positions].sort((a, b) => a.y - b.y);
+  const placed = [];
+  for (const pos of sorted) {
+    let y = pos.y;
+    for (const prev of placed) {
+      const nearLane = Math.abs(prev.x - pos.x) < TRACK_MODEL.collisionX;
+      const nearForward = Math.abs(prev.y - y) < TRACK_MODEL.collisionY;
+      if (!nearLane || !nearForward) continue;
+      y = Math.min(TRACK_MODEL.startY, prev.y + TRACK_MODEL.collisionY);
+    }
+    placed.push({ ...pos, y });
+  }
+  return placed;
+}
+
+function getRacePhase(t) {
+  if (t < .09) return { key: 'start', label: 'スタート' };
+  if (t < .30) return { key: 'corner', label: '第1コーナー' };
+  if (t < .52) return { key: 'back', label: '向正面' };
+  if (t < .67) return { key: 'corner', label: '第3コーナー' };
+  if (t < .82) return { key: 'corner', label: '第4コーナー' };
+  if (t < .94) return { key: 'final', label: '最後の直線' };
+  return { key: 'goal', label: 'ゴールシーン' };
+}
+
+function updateTrackPhase(phase) {
+  if (!phase) return;
+  els.track.dataset.phase = phase.key;
+  const label = document.getElementById('trackPhaseLabel');
+  if (label) label.textContent = phase.label;
+}
+
+function logLeaderFromPositions(positions, phaseLabel) {
+  const leader = [...positions].sort((a, b) => a.y - b.y)[0]?.item?.horse;
+  if (!leader) return;
+  const phrases = {
+    'スタート': 'スタート直後、好位にいるのは',
+    '第1コーナー': '第1コーナー、内を取ったのは',
+    '向正面': '向正面、ペースを作るのは',
+    '第3コーナー': '第3コーナー、徐々に動いたのは',
+    '第4コーナー': '第4コーナー、先頭をうかがうのは',
+    '最後の直線': '最後の直線、伸びてきたのは',
+    'ゴールシーン': 'ゴール前、粘っているのは'
+  };
+  addLog(`${phrases[phaseLabel] || phaseLabel}<strong>${leader.number}番 ${escapeHtml(leader.name)}</strong>。`);
+}
+
+function smoothstep(edge0, edge1, x) {
+  const t = clamp((x - edge0) / Math.max(.0001, edge1 - edge0), 0, 1);
+  return t * t * (3 - 2 * t);
+}
+
+function lerp(a, b, t) {
+  return a + (b - a) * t;
 }
 
 function calcScore(horse, rnd) {
@@ -379,14 +615,8 @@ function stylePhaseBonus(style, phase) {
 }
 
 function logLeader(raceData, t, phase) {
-  const leader = [...raceData.progress].sort((a, b) => a.path(t).y - b.path(t).y)[0].horse;
-  const phrases = {
-    '序盤': '序盤、ハナを奪ったのは',
-    '向正面': '向正面、軽快に進むのは',
-    '第4コーナー': '第4コーナー、先頭はまだ',
-    '最後の直線': '最後の直線、伸びてきたのは'
-  };
-  addLog(`${phrases[phase] || phase}<strong>${leader.number}番 ${escapeHtml(leader.name)}</strong>。`);
+  const positions = raceData.progress.map(item => ({ item, ...item.positionAt(t) }));
+  logLeaderFromPositions(resolveVisualPositions(positions), phase);
 }
 
 function updateStats(results) {
