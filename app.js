@@ -1,6 +1,6 @@
-const BUILD_VERSION = '2026-06-07 23:54:45';
+const BUILD_VERSION = '2026-06-08 00:20:00 / numbered-output-v3';
 
-const STORAGE_KEY = 'horse_race_simulator_private_v2_numbered';
+const STORAGE_KEY = 'horse_race_simulator_private_v3_numbered';
 const STYLES = ['逃げ', '先行', '差し', '追込', '自在'];
 const FRAME_COLORS = [
   ['#ffffff', '#111111'], ['#111111', '#ffffff'], ['#f5f5f5', '#111111'], ['#111111', '#ffffff'],
