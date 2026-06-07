@@ -1,6 +1,6 @@
-const BUILD_VERSION = '2026-06-08 01:15:00 / source-inspired-movement-v5';
+const BUILD_VERSION = '2026-06-08 01:36:00 / source-inspired-goal-scene-v6';
 
-const STORAGE_KEY = 'horse_race_simulator_private_v5_source_inspired';
+const STORAGE_KEY = 'horse_race_simulator_private_v6_source_inspired';
 const STYLES = ['逃げ', '先行', '差し', '追込', '自在'];
 const FRAME_COLORS = [
   ['#ffffff', '#111111'], ['#111111', '#ffffff'], ['#f5f5f5', '#111111'], ['#111111', '#ffffff'],
@@ -14,7 +14,7 @@ const HORSE_WORDS_A = ['ライヒス', 'マシンロウ', 'ケント', 'アル�
 const HORSE_WORDS_B = ['アドラー', 'ヴィル', 'ン', 'ラムス', 'タス', 'タス', 'ハチコウ', 'ガルフ', 'シア', 'ビスタ', 'シリウス', 'バラ', 'ナイーフ', 'スカイ', 'アンジェロ', 'エナジー', 'ン', 'ビギン'];
 const JOCKEYS = ['佐々木', '横山和', '丹内', '横山武', '川田', '西村淳', 'ディー', '浜中', 'レーン', '坂井瑠', '津村', '岩田康', 'ルメール', '武豊', '荻野極', '戸崎圭', '松山弘', 'ゴンサル'];
 const VENUES = ['東京競馬場', '中山競馬場', '京都競馬場', '阪神競馬場', '札幌競馬場', '函館競馬場', '新潟競馬場', '中京競馬場', '小倉競馬場'];
-const MARKS = ['◎', '○', '▲', '△', '☆'];
+const MARKS = ['◎', '○', '▲', '△', '★', '☆'];
 
 const defaultState = () => ({
   settings: {
@@ -222,7 +222,8 @@ function renderResults() {
     <div class="result-row">
       <div class="rank">${index + 1}着</div>
       <div>${r.number}　${escapeHtml(r.name)}</div>
-      <div class="time">${r.time.toFixed(1)}</div>
+      <div class="time">${formatRaceTime(r.time)}</div>
+      <div class="margin">${escapeHtml(r.marginLabel || (index === 0 ? '—' : marginLabelFromSeconds(r.margin || 0)))}</div>
     </div>`).join('');
 }
 
@@ -237,6 +238,7 @@ function clearRaceView({ keepLog = false } = {}) {
   state.results = [];
   state.stopRequested = false;
   if (!keepLog) els.raceLog.innerHTML = '';
+  removeGoalSceneBoard();
   renderResults();
   const label = document.getElementById('trackPhaseLabel');
   if (label) label.textContent = 'スタート';
@@ -347,6 +349,7 @@ async function startRace({ replay = false } = {}) {
     renderResults();
     updateTrackPhase({ key: 'goal', label: 'ゴールシーン' });
     addLog(`<strong>確定。</strong>1着は${state.results[0].number}番 ${escapeHtml(state.results[0].name)}。`);
+    renderGoalSceneBoard(state.results);
   }
 
   state.running = false;
@@ -440,16 +443,20 @@ function simulateRace(rnd, options = {}) {
     finished.push(horse);
   });
 
-  const results = [...simHorses]
-    .sort((a, b) => a.finishRaceSec - b.finishRaceSec)
-    .map((simHorse, index) => ({
+  const sortedFinishers = [...simHorses].sort((a, b) => a.finishRaceSec - b.finishRaceSec);
+  const winnerTime = sortedFinishers[0]?.finishRaceSec ?? 0;
+  const results = sortedFinishers.map((simHorse, index) => {
+    const margin = index === 0 ? 0 : simHorse.finishRaceSec - winnerTime;
+    return {
       number: simHorse.number,
       name: simHorse.name,
       score: simHorse.score,
       time: simHorse.finishRaceSec,
       raceSeconds: simHorse.finishRaceSec,
-      margin: index === 0 ? 0 : simHorse.finishRaceSec - Math.min(...simHorses.map(h => h.finishRaceSec))
-    }));
+      margin,
+      marginLabel: index === 0 ? '—' : marginLabelFromSeconds(margin)
+    };
+  });
 
   if (recordFrames && frames.length) {
     const last = frames[frames.length - 1];
@@ -720,8 +727,68 @@ function renderFinishBoard(rows) {
     <div class="result-row">
       <div class="rank">${index + 1}着</div>
       <div>${r.number}　${escapeHtml(r.name)}</div>
-      <div class="time">${r.time.toFixed(1)}</div>
+      <div class="time">${formatRaceTime(r.time)}</div>
+      <div class="margin">${escapeHtml(r.marginLabel || (index === 0 ? '—' : marginLabelFromSeconds(r.margin || 0)))}</div>
     </div>`).join('');
+}
+
+function removeGoalSceneBoard() {
+  if (!els.track) return;
+  els.track.classList.remove('goal-scene-active');
+  els.track.querySelector('.goal-scene-board')?.remove();
+}
+
+function renderGoalSceneBoard(results) {
+  if (!els.track || !Array.isArray(results) || !results.length) return;
+  removeGoalSceneBoard();
+  const board = document.createElement('div');
+  board.className = 'goal-scene-board';
+  board.innerHTML = `
+    <div class="goal-scene-title">
+      <strong>ゴールシーン</strong>
+      <span>${escapeHtml(state.settings.raceName)}　${Number(state.settings.distance)}m</span>
+    </div>
+    ${results.map((r, index) => {
+      const [bg, fg] = FRAME_COLORS[(Number(r.number) - 1) % FRAME_COLORS.length];
+      const margin = r.marginLabel || (index === 0 ? '—' : marginLabelFromSeconds(r.margin || 0));
+      return `
+        <div class="goal-finish-row" style="--delay:${Math.min(index * 42, 620)}ms">
+          <div class="goal-rank">${index + 1}着</div>
+          <span class="number-badge" style="--frame:${bg};--frameText:${fg};">${r.number}</span>
+          <div class="goal-horse-name">${escapeHtml(r.name)}</div>
+          <div class="goal-time">${formatRaceTime(r.time)}</div>
+          <div class="goal-margin">${escapeHtml(margin)}</div>
+        </div>`;
+    }).join('')}`;
+  els.track.appendChild(board);
+  requestAnimationFrame(() => {
+    els.track.classList.add('goal-scene-active');
+    board.classList.add('show');
+  });
+}
+
+function formatRaceTime(seconds) {
+  const value = Number(seconds);
+  if (!Number.isFinite(value)) return '—';
+  const min = Math.floor(value / 60);
+  const sec = value - min * 60;
+  return `${min}:${sec.toFixed(1).padStart(4, '0')}`;
+}
+
+function marginLabelFromSeconds(seconds) {
+  const s = Number(seconds) || 0;
+  if (s <= 0.05) return 'ハナ';
+  if (s <= 0.11) return 'アタマ';
+  if (s <= 0.18) return 'クビ';
+  const lengths = s / 0.17;
+  if (lengths < 0.75) return '1/2';
+  if (lengths < 1.25) return '1';
+  if (lengths < 1.75) return '1 1/2';
+  if (lengths < 2.25) return '2';
+  if (lengths < 2.75) return '2 1/2';
+  if (lengths < 3.25) return '3';
+  if (lengths < 3.75) return '3 1/2';
+  return `${Math.round(lengths)}馬身`;
 }
 
 function getBaseFinishTime(distance) {
@@ -935,9 +1002,10 @@ function renderStats() {
     const win = pctValue(s.win, s.run);
     const place2 = pctValue(s.place2, s.run);
     const place3 = pctValue(s.place3, s.run);
-    return { horse, s, avg, score, win, place2, place3, mark: getMark(win, place2, score, avg) };
+    return { horse, s, avg, score, win, place2, place3, mark: '', markRank: 999 };
   });
 
+  assignMarks(rows);
   rows.sort((a, b) => compareStats(a, b));
 
   els.statsBody.innerHTML = rows.map(row => {
@@ -957,22 +1025,45 @@ function renderStats() {
   }).join('');
 }
 
-function getMark(win, place2, score, avg) {
-  if (!score) return '';
-  const rating = win * 2.4 + place2 * 1.2 + score * .18 - avg * 1.5;
-  if (rating > 72) return '◎';
-  if (rating > 55) return '○';
-  if (rating > 42) return '▲';
-  if (rating > 31) return '△';
-  return '☆';
+function assignMarks(rows) {
+  rows.forEach(row => {
+    row.mark = '';
+    row.markRank = 999;
+  });
+  const used = new Set();
+  const available = rows.filter(row => row.s.run > 0);
+  if (!available.length) return;
+
+  const choose = (mark, rank, candidates, scoreFn) => {
+    const pool = candidates.filter(row => !used.has(row.horse.number));
+    if (!pool.length) return;
+    pool.sort((a, b) => scoreFn(b) - scoreFn(a) || a.avg - b.avg || a.horse.number - b.horse.number);
+    const row = pool[0];
+    row.mark = mark;
+    row.markRank = rank;
+    used.add(row.horse.number);
+  };
+
+  // ◎: 1着経験馬の中で総合力が最大。必ず1頭だけ。
+  choose('◎', 1, available.filter(row => row.s.win > 0), row => row.score * 1.5 + row.win * 2.2 + row.place2 - row.avg * 4.0);
+  // ○: 2着以内経験馬の総合上位。◎とは重複しない。
+  choose('○', 2, available.filter(row => row.s.place2 > 0), row => row.score * 1.35 + row.place2 * 1.8 + row.win * 1.2 - row.avg * 3.2);
+  // ▲: 2着以内経験馬の次点。○とは重複しない。
+  choose('▲', 3, available.filter(row => row.s.place2 > 0), row => row.score * 1.20 + row.place2 * 1.4 + row.place3 * .7 - row.avg * 2.7);
+  // △: 3着以内経験馬の平均着順上位。
+  choose('△', 4, available.filter(row => row.s.place3 > 0), row => 220 - row.avg * 18 + row.place3 * .7 + row.score * .28);
+  // ★: 3着以内経験馬の複勝率上位。
+  choose('★', 5, available.filter(row => row.s.place3 > 0), row => row.place3 * 2.1 + row.win * .7 + row.score * .18);
+  // ☆: 未選出馬からロマン指数最大。大穴用なので勝率だけで選ばない。
+  choose('☆', 6, available, row => row.score * .55 + row.place3 * 1.2 + row.win * 1.5 - row.avg * 1.1 + Number(row.horse.odds || 0) * .08);
 }
 
 function compareStats(a, b) {
   const key = state.sortKey;
   const dir = state.sortDir === 'asc' ? 1 : -1;
-  const markScore = (mark) => MARKS.indexOf(mark) === -1 ? 99 : MARKS.indexOf(mark);
+  const markScore = (row) => Number.isFinite(row.markRank) ? row.markRank : 999;
   const values = {
-    mark: [markScore(a.mark), markScore(b.mark)],
+    mark: [markScore(a), markScore(b)],
     number: [a.horse.number, b.horse.number],
     score: [a.score, b.score],
     avg: [a.avg || 99, b.avg || 99],
