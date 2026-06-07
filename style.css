@@ -371,6 +371,8 @@ textarea { min-height: 180px; resize: vertical; font-family: ui-monospace, SFMon
   .race-log { max-height: 360px; }
 }
 @media (max-width: 820px) {
+  .editor-title-row { flex-direction: column; }
+  .horse-editor-card { margin: 0 10px 12px; }
   .app-shell { width: min(100vw - 8px, 760px); padding-top: 6px; }
   .topbar { align-items: flex-start; flex-direction: column; }
   .top-actions { width: 100%; justify-content: stretch; }
@@ -385,3 +387,35 @@ textarea { min-height: 180px; resize: vertical; font-family: ui-monospace, SFMon
   .stage-toolbar { align-items: stretch; flex-direction: column; }
   .race-buttons button { flex: 1; }
 }
+
+.horse-editor-card {
+  margin: 0 16px 16px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 15px;
+  background: rgba(0,0,0,.16);
+}
+.editor-title-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+.editor-title-row h3 { margin: 0 0 4px; color: var(--gold); font-size: 16px; }
+.editor-title-row p { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.5; }
+.editor-actions { justify-content: flex-end; flex-shrink: 0; }
+.horse-editor-scroll { overflow: auto; max-height: min(52vh, 560px); border: 1px solid rgba(255,255,255,.08); border-radius: 12px; }
+.horse-editor-table { min-width: 1320px; font-size: 12px; }
+.horse-editor-table th, .horse-editor-table td { padding: 6px; vertical-align: middle; }
+.horse-editor-table input, .horse-editor-table select {
+  min-width: 72px;
+  padding: 7px 8px;
+  border-radius: 8px;
+  font-size: 12px;
+}
+.horse-editor-table input[data-field="name"] { min-width: 150px; }
+.horse-editor-table select[data-field="style"] { min-width: 84px; }
+.horse-editor-table input[data-field="jockey"] { min-width: 120px; }
+.horse-editor-table .num-cell { color: var(--gold); font-weight: 900; text-align: center; }
+.status-help { color: var(--muted); font-size: 11px; }
