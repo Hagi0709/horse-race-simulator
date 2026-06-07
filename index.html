@@ -3,11 +3,11 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-  <title>Horse Race Simulator V8</title>
+  <title>Horse Race Simulator V9</title>
   <meta name="theme-color" content="#08130f" />
   <link rel="icon" href="EE73C096-AE52-47CE-BAE4-299AC523ECFB.png" />
   <link rel="apple-touch-icon" href="EE73C096-AE52-47CE-BAE4-299AC523ECFB.png" />
-  <link rel="stylesheet" href="style_v8.css?v=20260608-v8" onerror="this.onerror=null;this.href='style.css?v=20260608-v8'" />
+  <link rel="stylesheet" href="style.css?v=20260608-v9" />
 </head>
 <body>
   <div class="app-shell">
@@ -16,7 +16,7 @@
         <img class="brand-icon" src="EE73C096-AE52-47CE-BAE4-299AC523ECFB.png" alt="" />
         <div>
           <h1>Horse Race Simulator</h1>
-          <p id="raceSubTitle">実データ対応・Canvasレースエンジン V8</p>
+          <p id="raceSubTitle">実データ対応・Canvasレースエンジン V9</p>
         </div>
       </div>
       <nav class="top-actions" aria-label="メニュー">
@@ -29,7 +29,7 @@
     <section class="race-meta-card" aria-label="レース情報">
       <div>
         <span class="meta-label">レース</span>
-        <strong id="raceNameLabel">V8 サンプルレース</strong>
+        <strong id="raceNameLabel">V9 サンプルレース</strong>
       </div>
       <div>
         <span class="meta-label">条件</span>
@@ -39,7 +39,7 @@
         <span class="meta-label">状態</span>
         <strong id="engineStatusLabel">待機中</strong>
       </div>
-      <div class="build-badge" id="buildBadge">BUILD V8</div>
+      <div class="build-badge" id="buildBadge">BUILD V9</div>
     </section>
 
     <main class="race-layout">
@@ -175,7 +175,7 @@
       <div class="maker-grid">
         <div class="maker-card">
           <h3>基本設定</h3>
-          <label>レース名<input id="raceNameInput" type="text" value="V8 サンプルレース" /></label>
+          <label>レース名<input id="raceNameInput" type="text" value="V9 サンプルレース" /></label>
           <label>開催<input id="venueInput" type="text" value="東京競馬場" /></label>
           <label>距離<input id="distanceInput" type="number" min="800" max="3600" step="100" value="2400" /></label>
           <label>馬場
@@ -239,6 +239,6 @@
     </div>
   </section>
 
-  <script src="app_v8.js?v=20260608-v8" onerror="var s=document.createElement('script');s.src='app.js?v=20260608-v8';document.body.appendChild(s);"></script>
+  <script src="app.js?v=20260608-v9"></script>
 </body>
 </html>
