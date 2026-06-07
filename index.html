@@ -4,11 +4,11 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <title>Horse Race Simulator</title>
-  <!-- BUILD: JRA-like private version / 20260608-0136 / source-inspired-goal-scene-v6 -->
+  <!-- BUILD: JRA-like private version / 20260608-0215 / real-data-loader-v7 -->
   <link rel="icon" type="image/png" href="EE73C096-AE52-47CE-BAE4-299AC523ECFB.png" />
   <link rel="apple-touch-icon" href="EE73C096-AE52-47CE-BAE4-299AC523ECFB.png" />
   <meta name="theme-color" content="#06111f" />
-  <link rel="stylesheet" href="style.css?v=20260608-0136" />
+  <link rel="stylesheet" href="style.css?v=20260608-0215" />
 </head>
 <body>
   <div class="app-shell">
@@ -23,7 +23,7 @@
       <div class="brand">
         <img class="brand-icon" src="EE73C096-AE52-47CE-BAE4-299AC523ECFB.png" alt="" />
         <h1>Horse Race Simulator</h1>
-        <span class="build-badge">V6</span>
+        <span class="build-badge">V7</span>
         <p>シミュレーター</p>
       </div>
 
@@ -215,6 +215,22 @@
         </label>
       </div>
 
+      <div class="real-data-box">
+        <div class="real-data-title">実データ読み込み</div>
+        <p class="real-data-note">同じ階層に <code>race_data_derby_2025.json</code> を置くと、下のボタンから反映できます。CSVではなく、まずJSON形式に対応しています。</p>
+        <div class="real-data-actions">
+          <button class="race-btn" id="loadDerbyDataBtn" type="button">2025日本ダービー読込</button>
+          <label class="race-btn file-picker" for="realDataFileInput">JSONファイル選択</label>
+          <input id="realDataFileInput" class="visually-hidden" type="file" accept=".json,application/json" />
+        </div>
+        <label>
+          JSON貼り付け
+          <textarea id="realDataPasteInput" rows="5" placeholder='{"raceName":"東京優駿", "entries":[...]}'></textarea>
+        </label>
+        <button class="race-btn" id="applyPastedDataBtn" type="button">貼り付けJSONを反映</button>
+        <div class="real-data-status" id="realDataStatus">未読み込み</div>
+      </div>
+
       <div class="modal-actions">
         <button class="race-btn" id="autoHorseBtn" type="button">出馬表を自動生成</button>
         <button class="race-btn primary" id="saveRaceBtn" value="default" type="button">保存</button>
@@ -222,6 +238,6 @@
     </form>
   </dialog>
 
-  <script src="app.js?v=20260608-0136"></script>
+  <script src="app.js?v=20260608-0215"></script>
 </body>
 </html>
