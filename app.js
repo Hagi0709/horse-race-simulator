@@ -1,9 +1,9 @@
 (() => {
   'use strict';
 
-  window.RACE_SIM_APP_LOADED = 'V9-20260608-0115';
+  window.RACE_SIM_APP_LOADED = 'V10-20260608-0145';
 
-  const BUILD_VERSION = '2026-06-08 01:20:00 V9';
+  const BUILD_VERSION = '2026-06-08 01:45:00 V10';
   const MARK_ORDER = ['◎', '○', '▲', '△', '★', '☆'];
   const STYLE_LIST = ['逃げ', '先行', '差し', '追込', '自在'];
   const WAKU_COLORS = {
@@ -18,10 +18,10 @@
   ]);
 
   const DEFAULT_RACE_DATA = {
-    schemaVersion: 'race-data-v9',
-    raceId: 'v9-sample',
-    raceName: 'V9 サンプルレース',
-    displayName: 'V9 サンプルレース',
+    schemaVersion: 'race-data-v10',
+    raceId: 'v10-sample',
+    raceName: 'V10 サンプルレース',
+    displayName: 'V10 サンプルレース',
     date: '',
     venue: '東京競馬場',
     surface: '芝',
@@ -132,32 +132,88 @@
     return d / 16.4;
   }
 
+  function pickNumber(obj, keys, fallback = NaN) {
+    for (const key of keys) {
+      const val = obj?.[key];
+      if (val == null || val === '') continue;
+      const num = Number(val);
+      if (Number.isFinite(num)) return num;
+    }
+    return fallback;
+  }
+
+  function aptitudeScore(value, fallback = 0) {
+    if (value == null || value === '') return fallback;
+    if (typeof value === 'string') {
+      if (value.includes('◎')) return 8;
+      if (value.includes('○')) return 5;
+      if (value.includes('▲')) return 3;
+      if (value.includes('△')) return 1;
+      if (value.includes('×')) return -5;
+    }
+    const n = Number(value);
+    if (!Number.isFinite(n)) return fallback;
+    // 0-100 scale or -10..+10 scale both accepted.
+    return n > 20 ? clamp((n - 50) / 6, -8, 8) : clamp(n, -8, 8);
+  }
+
   function calcEntryScore(entry, raceConfig) {
+    // V10: 予想支援用の多因子スコア。実データが足りない場合は保守的に補完する。
     let score = safeNum(entry.baseScore, NaN);
-    if (!Number.isFinite(score)) score = 68;
+    if (!Number.isFinite(score)) score = 62;
 
     const odds = safeNum(entry.odds, NaN);
     const pop = safeNum(entry.popularity, NaN);
-    if (Number.isFinite(pop) && pop > 0) score += clamp(16 - pop * 0.85, -3, 15);
-    if (Number.isFinite(odds) && odds > 0) score += clamp(14 - Math.log2(odds) * 3.2, -6, 13);
+    const last3f = pickNumber(entry, ['last3f', 'last3F', 'agari3f', 'closing3f'], NaN);
+    const speedIndex = pickNumber(entry, ['speedIndex', 'speedFigure', '指数', 'rating'], NaN);
+    const staminaIndex = pickNumber(entry, ['staminaIndex', 'staminaFigure'], NaN);
+    const jockeyScore = pickNumber(entry, ['jockeyScore', 'jockeyRating'], NaN);
+    const trainerScore = pickNumber(entry, ['trainerScore', 'trainerRating'], NaN);
+
+    if (Number.isFinite(speedIndex)) score += clamp((speedIndex - 70) * 0.22, -8, 10);
+    if (Number.isFinite(staminaIndex)) score += clamp((staminaIndex - 70) * 0.16, -7, 8);
+    if (Number.isFinite(pop) && pop > 0) score += clamp(13 - pop * 0.70, -3.5, 12);
+    if (Number.isFinite(odds) && odds > 0) score += clamp(10.5 - Math.log2(odds) * 2.55, -5.5, 10.5);
+    if (Number.isFinite(last3f)) {
+      // 上がりが速いほど終盤の再現性を評価。ただし極端値は丸める。
+      score += clamp((35.2 - last3f) * 2.2, -5.5, 7.5);
+    }
+    if (Number.isFinite(jockeyScore)) score += clamp((jockeyScore - 70) * 0.11, -4, 5);
+    if (Number.isFinite(trainerScore)) score += clamp((trainerScore - 70) * 0.07, -3, 3.5);
 
     if (Array.isArray(entry.recentResults) && entry.recentResults.length) {
-      const recent = entry.recentResults.slice(0, 4).map(v => safeNum(v, 9));
+      const recent = entry.recentResults.slice(0, 5).map(v => safeNum(v, 9));
       const avg = recent.reduce((a, b) => a + b, 0) / recent.length;
-      score += clamp(10 - avg * 1.25, -8, 9);
+      const best = Math.min(...recent);
+      score += clamp(8.5 - avg * 0.95, -7, 8);
+      if (best <= 1) score += 2.0;
+      else if (best <= 3) score += 0.9;
     }
+
+    score += aptitudeScore(entry.distanceAptitude ?? entry.distanceSuitability, 0);
+    score += aptitudeScore(entry.surfaceAptitude ?? entry.surfaceSuitability, 0);
+    score += aptitudeScore(entry.courseAptitude ?? entry.courseSuitability, 0);
+    score += aptitudeScore(entry.goingAptitude ?? entry.conditionAptitude, 0);
 
     const distance = safeNum(raceConfig.distance, 2400);
     if (distance >= 2200) {
-      if (entry.style === '差し' || entry.style === '追込') score += 1.4;
-      if (entry.style === '逃げ') score -= 0.8;
+      if (entry.style === '差し' || entry.style === '追込') score += 1.2;
+      if (entry.style === '逃げ') score -= 0.7;
+    }
+    if (distance <= 1600) {
+      if (entry.style === '逃げ' || entry.style === '先行') score += 0.9;
+      if (entry.style === '追込') score -= 0.5;
     }
     if (raceConfig.condition === '重' || raceConfig.condition === '不良') {
-      if (entry.style === '先行' || entry.style === '逃げ') score += 1.0;
-      if (entry.style === '追込') score -= 0.8;
+      if (entry.style === '先行' || entry.style === '逃げ') score += 0.9;
+      if (entry.style === '追込') score -= 0.6;
     }
 
-    return clamp(score, 40, 105);
+    // 斤量は同条件では小さく、差があるときのみ効かせる。
+    const weight = safeNum(entry.weight, NaN);
+    if (Number.isFinite(weight)) score += clamp((57 - weight) * 0.55, -3, 3);
+
+    return clamp(score, 38, 108);
   }
 
   function normalizeRaceData(rawData) {
@@ -197,7 +253,15 @@
         popularity: entry.popularity != null ? safeNum(entry.popularity, null) : null,
         style,
         recentResults: Array.isArray(entry.recentResults) ? entry.recentResults : [],
-        last3f: entry.last3f ?? null,
+        last3f: entry.last3f ?? entry.last3F ?? entry.agari3f ?? null,
+        distanceAptitude: entry.distanceAptitude ?? entry.distanceSuitability ?? null,
+        surfaceAptitude: entry.surfaceAptitude ?? entry.surfaceSuitability ?? null,
+        courseAptitude: entry.courseAptitude ?? entry.courseSuitability ?? null,
+        goingAptitude: entry.goingAptitude ?? entry.conditionAptitude ?? null,
+        speedIndex: entry.speedIndex ?? entry.speedFigure ?? entry.rating ?? null,
+        staminaIndex: entry.staminaIndex ?? entry.staminaFigure ?? null,
+        jockeyScore: entry.jockeyScore ?? entry.jockeyRating ?? null,
+        trainerScore: entry.trainerScore ?? entry.trainerRating ?? null,
         realFinish: entry.realFinish ?? entry.finish ?? null,
         realTime: entry.realTime || null,
         dataConfidence: entry.dataConfidence || '',
@@ -205,9 +269,9 @@
         mark: '',
       };
       normalized.score = calcEntryScore(normalized, raceConfig);
-      normalized.stamina = clamp(55 + normalized.score * 0.42 + styleStaminaBias(style), 52, 98);
-      normalized.burst = clamp(48 + normalized.score * 0.45 + styleBurstBias(style), 45, 99);
-      normalized.start = clamp(48 + normalized.score * 0.32 + styleStartBias(style), 42, 96);
+      normalized.stamina = clamp(54 + normalized.score * 0.38 + styleStaminaBias(style) + aptitudeScore(normalized.distanceAptitude, 0) * 0.55, 50, 99);
+      normalized.burst = clamp(46 + normalized.score * 0.42 + styleBurstBias(style) + (Number.isFinite(Number(normalized.last3f)) ? clamp((35.0 - Number(normalized.last3f)) * 1.4, -4, 7) : 0), 44, 99);
+      normalized.start = clamp(47 + normalized.score * 0.30 + styleStartBias(style), 40, 98);
       return normalized;
     });
 
@@ -458,6 +522,7 @@
 
     drawPhaseLabel(text) {
       if (!text) return;
+      if (!this.goalMode && (text === 'スタート' || text.includes('スタート〜'))) return;
       const ctx = this.ctx;
       const fontPx = clamp(this.W * 0.072, 28, 60);
       ctx.save();
@@ -580,12 +645,16 @@
     constructor(entries, raceConfig, settings = {}, seed = nowSeed()) {
       this.entries = entries.map(e => ({ ...e }));
       this.raceConfig = { ...raceConfig };
-      this.settings = { timeScale: 10.5, chaos: 0.38, block: 0.62, goalStartMeters: 300, startDelayMs: 1850, ...settings };
+      this.settings = { timeScale: 7.5, chaos: 0.30, block: 0.70, goalStartMeters: 360, startDelayMs: 420, goalSceneScale: 0.46, ...settings };
       this.seed = seed;
       this.rng = createRng(seed);
       this.distance = safeNum(this.raceConfig.distance, 2400);
       this.baseTime = baseTimeForDistance(this.distance);
       this.baseMps = this.distance / this.baseTime;
+      const frontCount = this.entries.filter(e => e.style === '逃げ' || e.style === '先行').length;
+      this.pacePressure = clamp(0.88 + frontCount * 0.018 + (this.rng() - 0.5) * 0.10, 0.86, 1.16);
+      this.trackBias = { inner: 1 + (this.rng() - 0.5) * 0.035, outer: 1 + (this.rng() - 0.5) * 0.035 };
+      this.firstFinishMs = null;
       this.elapsedMs = 0;
       this.finished = false;
       this.goalSceneStarted = false;
@@ -609,7 +678,10 @@
         speed: 0,
         staminaLeft: clamp(safeNum(entry.stamina, 75) / 100, 0.52, 1.0),
         ability,
-        formNoise: (rng() - 0.5) * (0.045 + this.settings.chaos * 0.035),
+        formNoise: (rng() - 0.5) * (0.030 + this.settings.chaos * 0.030),
+        breakQuality: clamp(0.86 + safeNum(entry.start, 70) / 500 + (rng() - 0.5) * 0.12, 0.78, 1.10),
+        lateKick: clamp(0.86 + safeNum(entry.burst, 70) / 360 + (rng() - 0.5) * 0.09, 0.82, 1.16),
+        sustain: clamp(0.86 + safeNum(entry.stamina, 70) / 370 + (rng() - 0.5) * 0.08, 0.82, 1.16),
         rhythm: rng() * Math.PI * 2,
         laneCooldown: 0,
         blockLevel: 0,
@@ -630,7 +702,8 @@
       if (this.finished) return this.snapshot();
       const dtMs = clamp(realDtMs, 10, 120);
       this.elapsedMs += dtMs;
-      const gameDt = (dtMs / 1000) * this.settings.timeScale;
+      let gameDt = (dtMs / 1000) * this.settings.timeScale;
+      if (this.goalSceneStarted) gameDt *= this.settings.goalSceneScale;
       const leader = this.getLeader();
       const leaderRatio = clamp((leader?.meters || 0) / this.distance, 0, 1);
       const phase = getPhaseForRatio(leaderRatio);
@@ -659,52 +732,82 @@
       const ratio = clamp(horse.meters / this.distance, 0, 1);
       horse.laneCooldown = Math.max(0, horse.laneCooldown - gameDt);
       const blockInfo = this.detectBlock(horse, allHorses, phase);
-      horse.blockLevel = lerp(horse.blockLevel || 0, blockInfo.level, 0.28);
+      horse.blockLevel = lerp(horse.blockLevel || 0, blockInfo.level, 0.26);
       const targetLane = this.decideTargetLane(horse, phase, blockInfo);
       horse.targetLane = targetLane;
 
-      const laneChangeRate = phase.final ? 1.15 : phase.corner ? 0.48 : 0.74;
-      horse.lane = lerp(horse.lane, horse.targetLane, clamp(gameDt * laneChangeRate / 10, 0.015, 0.18));
+      const laneChangeRate = phase.final ? 0.92 : phase.corner ? 0.38 : 0.62;
+      horse.lane = lerp(horse.lane, horse.targetLane, clamp(gameDt * laneChangeRate / 10, 0.010, 0.135));
 
-      const startDelayMs = safeNum(this.settings.startDelayMs, 1850);
+      const startDelayMs = safeNum(this.settings.startDelayMs, 420);
       if (this.elapsedMs < startDelayMs) {
         horse.speed = 0;
         horse.goalProgress = -0.03;
         return;
       }
-      const startEase = clamp((this.elapsedMs - startDelayMs) / 2200, 0, 1);
-      const abilityMult = 0.925 + horse.ability * 0.155;
+      const startEase = clamp((this.elapsedMs - startDelayMs) / 1600, 0, 1);
+      const abilityMult = 0.905 + horse.ability * 0.185;
       const styleMult = this.stylePhaseMultiplier(horse.style, ratio, horse.staminaLeft);
-      const staminaMult = horse.staminaLeft > 0.36 ? 1 : clamp(0.73 + horse.staminaLeft * 0.72, 0.72, 1);
-      const blockMult = 1 - horse.blockLevel * (0.12 + this.settings.block * 0.16);
-      const laneLoss = 1 - Math.max(0, horse.lane - 12) * 0.0035 - (phase.corner ? Math.max(0, horse.lane - 9) * 0.006 : 0);
-      const pulse = Math.sin(this.elapsedMs / 520 + horse.rhythm) * (0.006 + this.settings.chaos * 0.006);
-      const speedTarget = this.baseMps * abilityMult * styleMult * staminaMult * blockMult * laneLoss * (1 + horse.formNoise + pulse) * lerp(0.06, 1, easeInOut(startEase));
+      const paceMult = this.stylePaceMultiplier(horse.style, ratio, horse.staminaLeft);
+      const staminaMult = horse.staminaLeft > 0.34 ? 1 : clamp(0.68 + horse.staminaLeft * 0.86, 0.68, 1);
+      const blockMult = 1 - horse.blockLevel * (0.11 + this.settings.block * 0.20);
+      const laneLoss = 1
+        - Math.max(0, horse.lane - 12) * 0.0038
+        - (phase.corner ? Math.max(0, horse.lane - 9) * 0.0065 : 0)
+        + (horse.lane <= 5 ? (this.trackBias.inner - 1) : 0)
+        + (horse.lane >= 13 ? (this.trackBias.outer - 1) : 0);
+      const pulse = Math.sin(this.elapsedMs / 590 + horse.rhythm) * (0.004 + this.settings.chaos * 0.005);
+      const startBoost = lerp(0.18, horse.breakQuality, easeInOut(startEase));
+      const speedTarget = this.baseMps
+        * abilityMult
+        * styleMult
+        * (ratio >= 0.78 ? horse.lateKick : 1)
+        * paceMult
+        * staminaMult
+        * blockMult
+        * laneLoss
+        * (1 + horse.formNoise + pulse)
+        * startBoost;
 
-      horse.speed = lerp(horse.speed || speedTarget * 0.7, speedTarget, clamp(gameDt / 8, 0.04, 0.38));
-      horse.meters += Math.max(0.5, horse.speed) * gameDt;
+      horse.speed = lerp(horse.speed || speedTarget * 0.72, speedTarget, clamp(gameDt / 9, 0.035, 0.30));
+      horse.meters += Math.max(0.35, horse.speed) * gameDt;
 
-      const effort = clamp((horse.speed / this.baseMps - 0.82), 0, 0.45);
-      const frontCost = horse.style === '逃げ' && this.rankOfHorse(horse) <= 3 ? 0.00036 : 0;
-      const outsideCost = Math.max(0, horse.lane - 10) * 0.000045;
-      const fieldCost = phase.corner ? 0.00018 : phase.final ? 0.00026 : 0.00013;
-      horse.staminaLeft = clamp(horse.staminaLeft - gameDt * (fieldCost + effort * 0.00035 + outsideCost + frontCost), 0.02, 1);
+      const effort = clamp((horse.speed / this.baseMps - 0.80), 0, 0.52);
+      const rank = this.rankOfHorse(horse);
+      const frontCost = (horse.style === '逃げ' || horse.style === '先行') && rank <= 4 ? 0.00028 * this.pacePressure : 0;
+      const outsideCost = Math.max(0, horse.lane - 10) * 0.000048;
+      const blockCost = horse.blockLevel * 0.00028;
+      const fieldCost = phase.corner ? 0.00018 : phase.final ? 0.00030 : 0.00012;
+      const reserve = 0.86 + (horse.sustain - 1) * 0.75;
+      horse.staminaLeft = clamp(horse.staminaLeft - gameDt * (fieldCost + effort * 0.00033 + outsideCost + frontCost + blockCost) / reserve, 0.015, 1);
 
       const goalStart = this.distance - this.settings.goalStartMeters;
-      horse.goalProgress = clamp((horse.meters - goalStart) / (this.settings.goalStartMeters + 42), -0.03, 1.16);
+      horse.goalProgress = clamp((horse.meters - goalStart) / Math.max(1, this.settings.goalStartMeters), -0.04, 1.18);
+    }
+
+    stylePaceMultiplier(style, ratio, staminaLeft) {
+      const pressure = this.pacePressure;
+      const finalKick = ratio >= 0.76 ? clamp((ratio - 0.76) / 0.24, 0, 1) : 0;
+      const highPace = clamp((pressure - 1.0) / 0.16, 0, 1);
+      const slowPace = clamp((1.0 - pressure) / 0.14, 0, 1);
+      if (style === '逃げ') return 1 + slowPace * 0.035 - highPace * finalKick * 0.085;
+      if (style === '先行') return 1 + slowPace * 0.020 - highPace * finalKick * 0.045;
+      if (style === '差し') return 1 - slowPace * finalKick * 0.020 + highPace * finalKick * 0.045;
+      if (style === '追込') return 1 - slowPace * finalKick * 0.035 + highPace * finalKick * 0.065;
+      return 1 + highPace * finalKick * 0.018;
     }
 
     stylePhaseMultiplier(style, ratio, staminaLeft) {
-      const finalKick = ratio >= 0.82 ? clamp((ratio - 0.82) / 0.18, 0, 1) : 0;
+      const finalKick = ratio >= 0.80 ? clamp((ratio - 0.80) / 0.20, 0, 1) : 0;
       const mid = ratio >= 0.35 && ratio < 0.76 ? 1 : 0;
       const early = ratio < 0.22 ? 1 : 0;
-      const tired = staminaLeft < 0.28 ? (0.28 - staminaLeft) * 0.45 : 0;
+      const tired = staminaLeft < 0.30 ? (0.30 - staminaLeft) * 0.55 : 0;
       switch (style) {
-        case '逃げ': return 1 + early * 0.075 + mid * 0.022 - finalKick * (0.035 + tired);
-        case '先行': return 1 + early * 0.045 + mid * 0.020 + finalKick * 0.014 - tired * 0.45;
-        case '差し': return 1 - early * 0.045 + mid * 0.002 + finalKick * 0.090 - tired * 0.30;
-        case '追込': return 1 - early * 0.082 - mid * 0.008 + finalKick * 0.132 - tired * 0.26;
-        case '自在': return 1 + early * 0.015 + mid * 0.010 + finalKick * 0.052 - tired * 0.34;
+        case '逃げ': return 1 + early * 0.065 + mid * 0.020 - finalKick * (0.040 + tired);
+        case '先行': return 1 + early * 0.042 + mid * 0.018 + finalKick * 0.020 - tired * 0.42;
+        case '差し': return 1 - early * 0.040 + mid * 0.002 + finalKick * 0.088 - tired * 0.28;
+        case '追込': return 1 - early * 0.075 - mid * 0.006 + finalKick * 0.128 - tired * 0.24;
+        case '自在': return 1 + early * 0.012 + mid * 0.010 + finalKick * 0.052 - tired * 0.32;
         default: return 1;
       }
     }
@@ -782,13 +885,18 @@
       for (const horse of justFinished) {
         horse.finished = true;
         horse.finishMs = this.elapsedMs;
-        const rawSec = this.baseTime + (horse.finishMs / 1000 - this.baseTime / this.settings.timeScale) * 0.08;
-        const leaderSec = this.finishOrder[0]?.finalSeconds;
+        if (this.firstFinishMs == null) this.firstFinishMs = horse.finishMs;
+        const leaderBase = this.baseTime + (this.rng() - 0.5) * 0.18;
+        const leaderSec = this.finishOrder[0]?.finalSeconds ?? leaderBase;
+        const visualDiffSec = Math.max(0, (horse.finishMs - this.firstFinishMs) / 1000 * 0.42);
         horse.finalSeconds = this.finishOrder.length === 0
-          ? this.baseTime + (this.rng() - 0.5) * 0.25
-          : Math.max((leaderSec || this.baseTime) + this.finishOrder.length * 0.08 + this.rng() * 0.08, rawSec);
+          ? leaderBase
+          : Math.max(leaderSec + visualDiffSec, leaderSec + this.finishOrder.length * 0.055 + this.rng() * 0.035);
+        horse.meters = Math.max(horse.meters, this.distance + 18 + this.finishOrder.length * 1.2);
+        horse.goalProgress = 1.04 + this.finishOrder.length * 0.008;
         this.finishOrder.push(horse);
-        this.eventLogQueue.push({ type: 'finish', text: `${this.finishOrder.length}着 ${horse.number}番 ${horse.name} 入線。` });
+        const diff = this.finishOrder.length === 1 ? '-' : marginLabelFromSeconds(horse.finalSeconds - leaderSec);
+        this.eventLogQueue.push({ type: 'finish', text: `${this.finishOrder.length}着 ${horse.number}番 ${horse.name} ${formatSeconds(horse.finalSeconds)} ${diff}` });
       }
     }
 
@@ -825,8 +933,8 @@
         events,
         finished: this.finished,
         goalSceneStarted: this.goalSceneStarted,
-        gateOpen: clamp((this.elapsedMs - safeNum(this.settings.startDelayMs, 1850)) / 1350, 0, 1),
-        gateVisible: this.elapsedMs < safeNum(this.settings.startDelayMs, 1850) + 3000,
+        gateOpen: clamp((this.elapsedMs - safeNum(this.settings.startDelayMs, 420)) / 950, 0, 1),
+        gateVisible: this.elapsedMs < safeNum(this.settings.startDelayMs, 420) + 1900,
       };
     }
   }
@@ -866,7 +974,7 @@
       this.bindEvents();
       this.syncFormFromConfig();
       this.renderAll();
-      this.appendLog('scene', 'V9エンジンを初期化しました。レース開始を押してください。');
+      this.appendLog('scene', 'V10エンジンを初期化しました。カウントダウンなしで即スタートします。');
     }
 
     bindEvents() {
@@ -892,7 +1000,7 @@
 
     readSettings() {
       return {
-        timeScale: safeNum(this.dom.speedSelect?.value, 10.5),
+        timeScale: safeNum(this.dom.speedSelect?.value, 7.5),
         chaos: safeNum(this.dom.chaosRange?.value, 38) / 100,
         block: safeNum(this.dom.blockRange?.value, 62) / 100,
         goalStartMeters: safeNum(this.dom.goalStartSelect?.value, 300),
@@ -935,7 +1043,7 @@
     }
 
     async loadDerbyJson() {
-      const candidates = ['race_data_derby_2025_v9.json', 'race_data_derby_2025.json'];
+      const candidates = ['race_data_derby_2025_v10.json', 'race_data_derby_2025_v9.json', 'race_data_derby_2025.json'];
       for (const url of candidates) {
         try {
           const res = await fetch(`${url}?v=${Date.now()}`, { cache: 'no-store' });
@@ -947,7 +1055,7 @@
           // Try next candidate.
         }
       }
-      this.appendLog('hot', '日本ダービーJSONが見つかりません。race_data_derby_2025_v9.json または race_data_derby_2025.json を同じ階層に置いてください。');
+      this.appendLog('hot', '日本ダービーJSONが見つかりません。race_data_derby_2025_v10.json または race_data_derby_2025.json を同じ階層に置いてください。');
     }
 
     loadFileJson(event) {
@@ -1009,26 +1117,17 @@
       this.dom.pauseRaceBtn.textContent = '一時停止';
       this.dom.engineStatusLabel.textContent = 'レース中';
       this.dom.raceLog.innerHTML = '';
-      this.appendLog('scene', '各馬ゲートイン。スタートを待ちます。');
-      this.showCountdown();
+      this.appendLog('scene', 'ゲートオープン。各馬スタート。');
       this.rafId = requestAnimationFrame(ts => this.loop(ts));
     }
 
     showCountdown() {
+      // V10: カウントダウン演出は廃止。古いHTMLが残っていても確実に非表示にする。
       const el = this.dom.countdownOverlay;
-      if (!el) return;
-      const items = ['3', '2', '1', 'START'];
-      el.hidden = false;
-      let idx = 0;
-      const step = () => {
-        if (!this.running || idx >= items.length) {
-          el.hidden = true;
-          return;
-        }
-        el.textContent = items[idx++];
-        setTimeout(step, idx === items.length ? 600 : 520);
-      };
-      step();
+      if (el) {
+        el.hidden = true;
+        el.textContent = '';
+      }
     }
 
     loop(ts) {
@@ -1173,7 +1272,23 @@
     }
 
     renderGoalMiniList(order) {
-      this.dom.goalMiniList.innerHTML = (order || []).slice(0, 8).map(h => `<li>${h.number}番 ${escapeHtml(h.name)}</li>`).join('');
+      const rows = (order || []).slice(0, 18).map((h, i) => {
+        const prev = i === 0 ? null : order[i - 1];
+        const diff = prev ? h.finalSeconds - prev.finalSeconds : 0;
+        return `
+          <div class="goal-row ${i === 0 ? 'is-winner' : ''}">
+            <span class="goal-rank">${i + 1}</span>
+            <span class="goal-num waku-${h.waku}">${h.number}</span>
+            <span class="goal-name">${h.mark ? h.mark + ' ' : ''}${escapeHtml(h.name)}</span>
+            <span class="goal-time">${formatSeconds(h.finalSeconds)}</span>
+            <span class="goal-margin">${i === 0 ? '-' : marginLabelFromSeconds(diff)}</span>
+          </div>
+        `;
+      }).join('');
+      const wait = (order?.length || 0) < this.entries.length
+        ? `<div class="goal-wait">入線待ち：${this.entries.length - (order?.length || 0)}頭</div>`
+        : `<div class="goal-wait">全馬入線・確定</div>`;
+      this.dom.goalMiniList.innerHTML = rows + wait;
     }
 
     appendLog(type, text) {
@@ -1221,7 +1336,7 @@
     }
 
     runFastRace(seed) {
-      const sim = new RaceSimulation(this.entries, this.raceConfig, { ...this.settings, timeScale: 14, chaos: this.settings.chaos }, seed);
+      const sim = new RaceSimulation(this.entries, this.raceConfig, { ...this.settings, timeScale: 16, goalSceneScale: 1, chaos: this.settings.chaos }, seed);
       let guard = 0;
       while (!sim.finished && guard < 1400) {
         sim.tick(80);
@@ -1273,10 +1388,10 @@
     }[ch]));
   }
 
-  function bootRaceAppV9() {
-    if (window.__raceAppV9) return;
+  function bootRaceAppV10() {
+    if (window.__raceAppV10) return;
     try {
-      window.__raceAppV9 = new RaceApp();
+      window.__raceAppV10 = new RaceApp();
     } catch (err) {
       console.error(err);
       const body = document.body;
@@ -1288,8 +1403,8 @@
   }
 
   if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', bootRaceAppV9, { once: true });
+    document.addEventListener('DOMContentLoaded', bootRaceAppV10, { once: true });
   } else {
-    bootRaceAppV9();
+    bootRaceAppV10();
   }
 })();
