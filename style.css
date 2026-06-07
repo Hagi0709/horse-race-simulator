@@ -1,4 +1,4 @@
-/* BUILD: JRA-like private version / 20260608-0136 / source-inspired-goal-scene-v6 */
+/* BUILD: JRA-like private version / 20260608-0215 / real-data-loader-v7 */
 :root {
   --bg: #06111f;
   --bg2: #091827;
@@ -672,3 +672,117 @@ body.compact .log-box { height: 170px; }
 .result-row {
   grid-template-columns: 40px minmax(0, 1fr) 66px 50px;
 }
+
+/* V7: real race data loader */
+.build-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-left: 8px;
+  min-width: 34px;
+  height: 20px;
+  border: 1px solid rgba(217, 178, 79, .45);
+  border-radius: 999px;
+  color: var(--gold2);
+  background: rgba(217, 178, 79, .08);
+  font-size: 11px;
+  letter-spacing: .08em;
+  vertical-align: middle;
+}
+.real-data-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 5px;
+  padding: 3px 8px;
+  border: 1px solid rgba(73, 160, 255, .38);
+  border-radius: 999px;
+  color: #9fd0ff;
+  background: rgba(73, 160, 255, .09);
+  font-size: 12px;
+}
+.real-data-indicator::before { content: "実"; color: var(--gold2); font-weight: 900; }
+.runner-card.real-data-runner {
+  background: linear-gradient(90deg, rgba(73, 160, 255, .08), rgba(8, 25, 42, .68));
+}
+.pre-mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 22px;
+  height: 22px;
+  margin-right: 5px;
+  border-radius: 50%;
+  color: var(--gold2);
+  border: 1px solid rgba(217, 178, 79, .40);
+  background: rgba(217, 178, 79, .08);
+  font-weight: 900;
+}
+.real-finish-chip {
+  color: #a7d3ff;
+  border: 1px solid rgba(73, 160, 255, .30);
+  border-radius: 999px;
+  padding: 1px 6px;
+  background: rgba(73, 160, 255, .08);
+}
+.real-data-box {
+  margin: 16px 0 8px;
+  padding: 12px;
+  border: 1px solid rgba(73, 160, 255, .25);
+  border-radius: 8px;
+  background: rgba(5, 17, 30, .72);
+}
+.real-data-title {
+  color: var(--gold2);
+  font-weight: 900;
+  margin-bottom: 6px;
+}
+.real-data-note {
+  margin: 0 0 10px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.6;
+}
+.real-data-note code {
+  color: #d4e7ff;
+  background: rgba(255, 255, 255, .06);
+  padding: 1px 4px;
+  border-radius: 4px;
+}
+.real-data-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+.file-picker { display: inline-flex; align-items: center; }
+.visually-hidden {
+  position: absolute !important;
+  width: 1px !important;
+  height: 1px !important;
+  padding: 0 !important;
+  margin: -1px !important;
+  overflow: hidden !important;
+  clip: rect(0, 0, 0, 0) !important;
+  white-space: nowrap !important;
+  border: 0 !important;
+}
+#realDataPasteInput {
+  min-height: 92px;
+  resize: vertical;
+  font-size: 12px;
+  line-height: 1.5;
+}
+.real-data-status {
+  margin-top: 8px;
+  color: #9fb0c2;
+  font-size: 12px;
+  line-height: 1.5;
+}
+.real-data-status.ok { color: #87e6a4; }
+.real-data-status.error { color: #ff98a8; }
+@media (max-width: 760px) {
+  .real-data-actions { flex-direction: column; }
+  .real-data-actions .race-btn { width: 100%; justify-content: center; }
+}
+
