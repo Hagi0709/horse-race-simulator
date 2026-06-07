@@ -1,9 +1,9 @@
 (() => {
   'use strict';
 
-  window.RACE_SIM_APP_LOADED = 'V8-20260608-0100';
+  window.RACE_SIM_APP_LOADED = 'V9-20260608-0115';
 
-  const BUILD_VERSION = '2026-06-08 01:00:00 V8';
+  const BUILD_VERSION = '2026-06-08 01:20:00 V9';
   const MARK_ORDER = ['◎', '○', '▲', '△', '★', '☆'];
   const STYLE_LIST = ['逃げ', '先行', '差し', '追込', '自在'];
   const WAKU_COLORS = {
@@ -18,10 +18,10 @@
   ]);
 
   const DEFAULT_RACE_DATA = {
-    schemaVersion: 'race-data-v8',
-    raceId: 'v8-sample',
-    raceName: 'V8 サンプルレース',
-    displayName: 'V8 サンプルレース',
+    schemaVersion: 'race-data-v9',
+    raceId: 'v9-sample',
+    raceName: 'V9 サンプルレース',
+    displayName: 'V9 サンプルレース',
     date: '',
     venue: '東京競馬場',
     surface: '芝',
@@ -163,7 +163,7 @@
   function normalizeRaceData(rawData) {
     const raw = rawData && typeof rawData === 'object' ? rawData : DEFAULT_RACE_DATA;
     const raceConfig = {
-      raceId: raw.raceId || raw.id || 'race-v8',
+      raceId: raw.raceId || raw.id || 'race-v9',
       raceName: raw.raceName || raw.displayName || raw.name || '名称未設定レース',
       displayName: raw.displayName || raw.raceName || raw.name || '名称未設定レース',
       date: raw.date || '',
@@ -866,7 +866,7 @@
       this.bindEvents();
       this.syncFormFromConfig();
       this.renderAll();
-      this.appendLog('scene', 'V8エンジンを初期化しました。レース開始を押してください。');
+      this.appendLog('scene', 'V9エンジンを初期化しました。レース開始を押してください。');
     }
 
     bindEvents() {
@@ -935,7 +935,7 @@
     }
 
     async loadDerbyJson() {
-      const candidates = ['race_data_derby_2025_v8.json', 'race_data_derby_2025.json'];
+      const candidates = ['race_data_derby_2025_v9.json', 'race_data_derby_2025.json'];
       for (const url of candidates) {
         try {
           const res = await fetch(`${url}?v=${Date.now()}`, { cache: 'no-store' });
@@ -947,7 +947,7 @@
           // Try next candidate.
         }
       }
-      this.appendLog('hot', '日本ダービーJSONが見つかりません。race_data_derby_2025_v8.json または race_data_derby_2025.json を同じ階層に置いてください。');
+      this.appendLog('hot', '日本ダービーJSONが見つかりません。race_data_derby_2025_v9.json または race_data_derby_2025.json を同じ階層に置いてください。');
     }
 
     loadFileJson(event) {
@@ -1273,9 +1273,10 @@
     }[ch]));
   }
 
-  document.addEventListener('DOMContentLoaded', () => {
+  function bootRaceAppV9() {
+    if (window.__raceAppV9) return;
     try {
-      window.__raceAppV8 = new RaceApp();
+      window.__raceAppV9 = new RaceApp();
     } catch (err) {
       console.error(err);
       const body = document.body;
@@ -1284,5 +1285,11 @@
       pre.textContent = `初期化エラー: ${err.message}\n${err.stack || ''}`;
       body.prepend(pre);
     }
-  });
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', bootRaceAppV9, { once: true });
+  } else {
+    bootRaceAppV9();
+  }
 })();
